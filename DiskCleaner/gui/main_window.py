@@ -8,6 +8,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -31,26 +32,35 @@ from gui.old_files_tab import OldFilesTab
 
 class DiskPieCanvas(FigureCanvas):
     def __init__(self):
-        fig = Figure(figsize=(3, 3))
+        fig = Figure(figsize=(3, 3), facecolor="#1f232b")
         self.ax = fig.add_subplot(111)
+        self.ax.set_facecolor("#1f232b")
         super().__init__(fig)
 
     def update_chart(self, used: int, free: int):
         self.ax.clear()
-        self.ax.pie([used, free], labels=["Занято", "Свободно"], autopct="%1.1f%%")
+        self.ax.pie(
+            [used, free],
+            labels=["Занято", "Свободно"],
+            colors=["#2d6cdf", "#3cb371"],
+            autopct="%1.1f%%",
+            textprops={"color": "#e6e9ef", "fontsize": 10},
+        )
         self.draw()
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("DiskCleaner")
-        self.resize(1400, 850)
+        self.setWindowTitle("DiskCleaner — анализ и очистка диска")
+        self.resize(1450, 900)
         self.settings = load_json(SETTINGS_FILE, default={})
 
         root = QWidget()
         self.setCentralWidget(root)
         layout = QHBoxLayout(root)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
 
         splitter = QSplitter(Qt.Horizontal)
         layout.addWidget(splitter)
@@ -62,22 +72,34 @@ class MainWindow(QMainWindow):
         self.dupe_tab = DuplicatesTab(self.current_drive)
         self.old_tab = OldFilesTab(self.current_drive)
 
-        self.tabs.addTab(self.disk_map_tab, "Карта диска")
-        self.tabs.addTab(self.junk_tab, "Поиск мусора")
-        self.tabs.addTab(self.large_tab, "Большие файлы")
-        self.tabs.addTab(self.dupe_tab, "Дубликаты")
-        self.tabs.addTab(self.old_tab, "Старые файлы")
+        self.tabs.addTab(self.disk_map_tab, "🗺 Карта диска")
+        self.tabs.addTab(self.junk_tab, "🧹 Поиск мусора")
+        self.tabs.addTab(self.large_tab, "📦 Большие файлы")
+        self.tabs.addTab(self.dupe_tab, "🧬 Дубликаты")
+        self.tabs.addTab(self.old_tab, "🕒 Старые файлы")
 
         sidebar = QWidget()
         side_layout = QVBoxLayout(sidebar)
+        side_layout.setSpacing(10)
+
+        drive_box_group = QGroupBox("Диск")
+        drive_box_layout = QVBoxLayout(drive_box_group)
         self.drive_box = QComboBox()
         self.drive_box.addItems(self._available_drives())
         self.drive_box.setCurrentText(self.settings.get("drive", self.drive_box.currentText()))
         self.drive_box.currentTextChanged.connect(self.on_drive_changed)
+        drive_box_layout.addWidget(QLabel("Выберите диск для анализа:"))
+        drive_box_layout.addWidget(self.drive_box)
 
+        usage_group = QGroupBox("Состояние диска")
+        usage_layout = QVBoxLayout(usage_group)
         self.disk_label = QLabel("Информация о диске")
         self.pie = DiskPieCanvas()
+        usage_layout.addWidget(self.disk_label)
+        usage_layout.addWidget(self.pie)
 
+        actions_group = QGroupBox("Дополнительные инструменты")
+        actions_layout = QVBoxLayout(actions_group)
         self.ext_btn = QPushButton("Анализ расширений")
         self.empty_btn = QPushButton("Найти пустые папки")
         self.report_txt_btn = QPushButton("Экспорт TXT")
@@ -85,20 +107,20 @@ class MainWindow(QMainWindow):
         self.ext_output = QLabel("-")
         self.ext_output.setWordWrap(True)
 
-        side_layout.addWidget(QLabel("Выберите диск:"))
-        side_layout.addWidget(self.drive_box)
-        side_layout.addWidget(self.disk_label)
-        side_layout.addWidget(self.pie)
-        side_layout.addWidget(self.ext_btn)
-        side_layout.addWidget(self.empty_btn)
-        side_layout.addWidget(self.report_txt_btn)
-        side_layout.addWidget(self.report_html_btn)
-        side_layout.addWidget(self.ext_output)
+        actions_layout.addWidget(self.ext_btn)
+        actions_layout.addWidget(self.empty_btn)
+        actions_layout.addWidget(self.report_txt_btn)
+        actions_layout.addWidget(self.report_html_btn)
+        actions_layout.addWidget(self.ext_output)
+
+        side_layout.addWidget(drive_box_group)
+        side_layout.addWidget(usage_group)
+        side_layout.addWidget(actions_group)
         side_layout.addStretch(1)
 
         splitter.addWidget(self.tabs)
         splitter.addWidget(sidebar)
-        splitter.setSizes([1000, 350])
+        splitter.setSizes([1030, 390])
 
         self.setStatusBar(QStatusBar())
 

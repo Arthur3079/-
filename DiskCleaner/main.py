@@ -12,6 +12,7 @@ def main():
     setup_logging()
     logger = get_logger("diskcleaner.main")
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     app.setStyleSheet(DARK_STYLESHEET)
 
     admin = is_admin()
