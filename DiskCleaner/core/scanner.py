@@ -2,6 +2,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from .app_logger import get_logger
 from .utils import file_stat_safe
 
 
@@ -16,12 +17,14 @@ class Node:
 class DiskScanner:
     def __init__(self):
         self.cancel_requested = False
+        self.logger = get_logger("diskcleaner.scanner")
 
     def cancel(self) -> None:
         self.cancel_requested = True
 
     def scan_tree(self, root: str, progress_cb=None) -> Optional[Node]:
         self.cancel_requested = False
+        self.logger.info("Disk scan started: root=%s", root)
         root_node = Node(path=root)
         stack: List[Node] = [root_node]
 
@@ -50,6 +53,7 @@ class DiskScanner:
                 continue
 
         self._rollup_sizes(root_node)
+        self.logger.info("Disk scan completed: root=%s size=%s files=%s", root, root_node.size, root_node.files)
         return root_node
 
     def _rollup_sizes(self, node: Node) -> None:

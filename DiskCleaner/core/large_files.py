@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List
 
+from .app_logger import get_logger
 from .utils import file_stat_safe, iter_files
 
 
@@ -18,12 +19,14 @@ class LargeFileEntry:
 class LargeFilesFinder:
     def __init__(self):
         self.cancel_requested = False
+        self.logger = get_logger("diskcleaner.large_files")
 
     def cancel(self):
         self.cancel_requested = True
 
     def find(self, root: str, threshold_mb: int = 100, progress_cb=None) -> List[LargeFileEntry]:
         self.cancel_requested = False
+        self.logger.info("Large file scan started: root=%s threshold_mb=%s", root, threshold_mb)
         threshold = threshold_mb * 1024 * 1024
         out: List[LargeFileEntry] = []
         for path in iter_files(root):
@@ -45,4 +48,5 @@ class LargeFilesFinder:
                     )
                 )
         out.sort(key=lambda x: x.size, reverse=True)
+        self.logger.info("Large file scan completed: found=%s", len(out))
         return out

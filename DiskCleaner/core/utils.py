@@ -81,3 +81,15 @@ def load_json(path: Path, default: Optional[Dict[str, Any]] = None) -> Dict[str,
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return default or {}
+
+
+def request_admin_relaunch() -> bool:
+    if os.name != "nt":
+        return False
+    try:
+        import sys
+        params = " ".join([f'"{a}"' for a in sys.argv])
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
+        return True
+    except Exception:
+        return False

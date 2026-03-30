@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from config import CAUTION_LEVEL, DANGER_LEVEL, SAFE_LEVEL
+from .app_logger import get_logger
 from .utils import file_stat_safe, iter_files
 
 
@@ -20,6 +21,7 @@ class JunkItem:
 class JunkFinder:
     def __init__(self):
         self.cancel_requested = False
+        self.logger = get_logger("diskcleaner.junk_finder")
 
     def cancel(self):
         self.cancel_requested = True
@@ -40,6 +42,7 @@ class JunkFinder:
 
     def scan(self, drive: str = "C:\\") -> Dict[str, List[JunkItem]]:
         self.cancel_requested = False
+        self.logger.info("Junk scan started: drive=%s", drive)
         user = os.environ.get("USERPROFILE", str(Path.home()))
         local = os.path.join(user, "AppData", "Local")
         roaming = os.path.join(user, "AppData", "Roaming")
@@ -137,4 +140,6 @@ class JunkFinder:
         self._add_patterns(downloads, "Загрузки и установщики", CAUTION_LEVEL, [os.path.join(user, "Downloads", "**", "*.exe"), os.path.join(user, "Downloads", "**", "*.msi")])
         put("Загрузки и установщики", downloads)
 
+        summary = {k: len(v) for k, v in result.items()}
+        self.logger.info("Junk scan completed: %s", summary)
         return result

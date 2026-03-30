@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from config import LOG_FILE, QUARANTINE_DIR
+from .app_logger import get_logger
 
 
 class Cleaner:
@@ -12,12 +13,15 @@ class Cleaner:
         self.log_file = log_file
         self.quarantine_dir = quarantine_dir
         self.quarantine_dir.mkdir(parents=True, exist_ok=True)
+        self.logger = get_logger("diskcleaner.cleaner")
+        self.logger.info("Cleaner initialized")
 
     def _log(self, line: str):
         with self.log_file.open("a", encoding="utf-8") as f:
             f.write(f"{datetime.now().isoformat()} | {line}\n")
 
     def delete_files(self, paths: List[str], quarantine: bool = False) -> Tuple[List[str], Dict[str, str]]:
+        self.logger.info("Delete request received: items=%s quarantine=%s", len(paths), quarantine)
         deleted = []
         failed: Dict[str, str] = {}
         for p in paths:
@@ -35,7 +39,10 @@ class Cleaner:
                         os.remove(p)
                     self._log(f"DELETE {p}")
                 deleted.append(p)
+                self.logger.info("Processed successfully: %s", p)
             except (PermissionError, FileNotFoundError, OSError) as e:
                 failed[p] = str(e)
                 self._log(f"FAILED {p}: {e}")
+                self.logger.warning("Failed to process %s: %s", p, e)
+        self.logger.info("Delete request completed: deleted=%s failed=%s", len(deleted), len(failed))
         return deleted, failed

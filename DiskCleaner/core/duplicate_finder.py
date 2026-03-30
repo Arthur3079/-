@@ -3,6 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List
 
+from .app_logger import get_logger
 from .utils import file_stat_safe, iter_files
 
 
@@ -16,6 +17,7 @@ class DuplicateEntry:
 class DuplicateFinder:
     def __init__(self):
         self.cancel_requested = False
+        self.logger = get_logger("diskcleaner.duplicate_finder")
 
     def cancel(self):
         self.cancel_requested = True
@@ -33,9 +35,11 @@ class DuplicateFinder:
 
     def find(self, root: str, progress_cb=None) -> Dict[str, List[DuplicateEntry]]:
         self.cancel_requested = False
+        self.logger.info("Duplicate scan started: root=%s", root)
         by_size = defaultdict(list)
         for path in iter_files(root):
             if self.cancel_requested:
+                self.logger.info("Duplicate scan canceled during size pass")
                 return {}
             if progress_cb:
                 progress_cb(path)
@@ -46,6 +50,7 @@ class DuplicateFinder:
         groups: Dict[str, List[DuplicateEntry]] = {}
         for size, files in by_size.items():
             if self.cancel_requested:
+                self.logger.info("Duplicate scan canceled during hash pass")
                 return groups
             if len(files) < 2:
                 continue
@@ -59,4 +64,6 @@ class DuplicateFinder:
             for digest, paths in by_hash.items():
                 if len(paths) > 1:
                     groups[digest] = [DuplicateEntry(path=p, size=size, digest=digest) for p in paths]
+
+        self.logger.info("Duplicate scan completed: groups=%s", len(groups))
         return groups
