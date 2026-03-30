@@ -47,11 +47,13 @@ class LargeFilesTab(QWidget):
         self.threshold.setValue(100)
         self.scan_btn = QPushButton("Найти")
         self.open_btn = QPushButton("Открыть папку")
+        self.select_all_btn = QPushButton("Выбрать все")
         self.delete_btn = QPushButton("Удалить выбранные")
         top.addWidget(QLabel("Порог (МБ):"))
         top.addWidget(self.threshold)
         top.addWidget(self.scan_btn)
         top.addWidget(self.open_btn)
+        top.addWidget(self.select_all_btn)
         top.addWidget(self.delete_btn)
 
         self.table = QTableWidget(0, 5)
@@ -64,6 +66,7 @@ class LargeFilesTab(QWidget):
 
         self.scan_btn.clicked.connect(self.scan)
         self.open_btn.clicked.connect(self.open_folder)
+        self.select_all_btn.clicked.connect(self.table.selectAll)
         self.delete_btn.clicked.connect(self.delete_selected)
 
     def scan(self):
@@ -102,7 +105,10 @@ class LargeFilesTab(QWidget):
         paths = self.selected_paths()
         if not paths:
             return
-        if QMessageBox.question(self, "Подтверждение", f"Удалить {len(paths)} файлов?") != QMessageBox.Yes:
+        preview = "\n".join(paths[:20])
+        if len(paths) > 20:
+            preview += f"\n... и ещё {len(paths) - 20}"
+        if QMessageBox.question(self, "Подтверждение", f"Удалить {len(paths)} файлов?\n\n{preview}") != QMessageBox.Yes:
             return
         deleted, failed = self.cleaner.delete_files(paths)
         QMessageBox.information(self, "Итог", f"Удалено: {len(deleted)}; ошибок: {len(failed)}")

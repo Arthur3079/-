@@ -35,8 +35,10 @@ class DuplicatesTab(QWidget):
         layout = QVBoxLayout(self)
         top = QHBoxLayout()
         self.scan_btn = QPushButton("Сканировать дубликаты")
+        self.select_copies_btn = QPushButton("Выбрать копии")
         self.delete_btn = QPushButton("Удалить выбранные")
         top.addWidget(self.scan_btn)
+        top.addWidget(self.select_copies_btn)
         top.addWidget(self.delete_btn)
 
         self.tree = QTreeWidget()
@@ -46,6 +48,7 @@ class DuplicatesTab(QWidget):
         layout.addWidget(self.tree)
 
         self.scan_btn.clicked.connect(self.scan)
+        self.select_copies_btn.clicked.connect(self.select_copies)
         self.delete_btn.clicked.connect(self.delete_selected)
 
     def scan(self):
@@ -67,6 +70,13 @@ class DuplicatesTab(QWidget):
                 child.setCheckState(0, Qt.Unchecked if idx == 0 else Qt.Checked)
                 group.addChild(child)
 
+    def select_copies(self):
+        for i in range(self.tree.topLevelItemCount()):
+            grp = self.tree.topLevelItem(i)
+            for j in range(grp.childCount()):
+                ch = grp.child(j)
+                ch.setCheckState(0, Qt.Checked if ch.text(3) == "Копия" else Qt.Unchecked)
+
     def delete_selected(self):
         paths = []
         for i in range(self.tree.topLevelItemCount()):
@@ -77,7 +87,10 @@ class DuplicatesTab(QWidget):
                     paths.append(ch.text(0))
         if not paths:
             return
-        if QMessageBox.question(self, "Подтверждение", f"Удалить {len(paths)} копий?") != QMessageBox.Yes:
+        preview = "\n".join(paths[:20])
+        if len(paths) > 20:
+            preview += f"\n... и ещё {len(paths) - 20}"
+        if QMessageBox.question(self, "Подтверждение", f"Удалить {len(paths)} копий?\n\n{preview}") != QMessageBox.Yes:
             return
         deleted, failed = self.cleaner.delete_files(paths)
         QMessageBox.information(self, "Итог", f"Удалено: {len(deleted)}; ошибок: {len(failed)}")

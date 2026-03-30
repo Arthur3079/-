@@ -41,10 +41,12 @@ class OldFilesTab(QWidget):
         self.months.setRange(1, 60)
         self.months.setValue(12)
         self.scan_btn = QPushButton("Найти")
+        self.select_all_btn = QPushButton("Выбрать все")
         self.delete_btn = QPushButton("Удалить выбранные")
         top.addWidget(QLabel("Не использовались (месяцев):"))
         top.addWidget(self.months)
         top.addWidget(self.scan_btn)
+        top.addWidget(self.select_all_btn)
         top.addWidget(self.delete_btn)
 
         self.table = QTableWidget(0, 3)
@@ -55,6 +57,7 @@ class OldFilesTab(QWidget):
         layout.addWidget(self.table)
 
         self.scan_btn.clicked.connect(self.scan)
+        self.select_all_btn.clicked.connect(self.table.selectAll)
         self.delete_btn.clicked.connect(self.delete_selected)
 
     def scan(self):
@@ -74,7 +77,10 @@ class OldFilesTab(QWidget):
         paths = [self.table.item(r, 0).text() for r in rows]
         if not paths:
             return
-        if QMessageBox.question(self, "Подтверждение", f"Удалить {len(paths)} старых файлов?") != QMessageBox.Yes:
+        preview = "\n".join(paths[:20])
+        if len(paths) > 20:
+            preview += f"\n... и ещё {len(paths) - 20}"
+        if QMessageBox.question(self, "Подтверждение", f"Удалить {len(paths)} старых файлов?\n\n{preview}") != QMessageBox.Yes:
             return
         deleted, failed = self.cleaner.delete_files(paths)
         QMessageBox.information(self, "Итог", f"Удалено: {len(deleted)}; ошибок: {len(failed)}")
