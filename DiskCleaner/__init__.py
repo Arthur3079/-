@@ -1,0 +1,1 @@
+"""DiskCleaner application package."""
