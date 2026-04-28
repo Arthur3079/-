@@ -13,7 +13,7 @@ modules so the stack covers the full combine.
 | 4 | Neuro-Chatting    | `sonya.dialogue` (existing) | Shipped    |
 | 5 | NeuroDialogs      | `sonya.dialogue` (existing) | Shipped    |
 | 6 | Mass Reactions    | `sonya.combine.reactions`  | Planned     |
-| 7 | Parsers           | `sonya.combine.parsers`    | Planned     |
+| 7 | Parsers           | `sonya.combine.parsers`    | Sprint 3: 4 parser kinds + REST jobs + stub executor |
 | 8 | Analytics         | `sonya.combine.analytics`  | Partly shipped via `sonya_web.dashboard` |
 
 ## Data model
@@ -111,11 +111,54 @@ background executor (Sprint 7): when a Telethon worker subscribes to a
 channel, it POSTs the result here and the trust update happens
 atomically.
 
+## Sprint 3 — Parsers module
+
+`sonya.combine.parsers` submits four flavours of parsing tasks against a
+single account and stores their results so other modules
+(warming / commenting / reactions) can use them as input.
+
+### Parser kinds
+
+| `ParserKind`        | Use case                                           |
+| ------------------- | -------------------------------------------------- |
+| `users_in_chat`     | List members of a public chat / channel.           |
+| `channels_of_user`  | List public channels a user has joined.            |
+| `chat_history`      | Fetch recent messages in a peer.                   |
+| `users_by_message`  | Find authors whose messages match a search query.  |
+
+### Architecture
+
+* **`ParserExecutor`** — `Protocol` describing the runtime that calls
+  Telethon. Real implementations are out of scope for Sprint 3 (they
+  ship with the worker in Sprint 7).
+* **`StubParserExecutor`** — deterministic, offline executor. Used by
+  tests and by the `/run-stub` REST endpoint to smoke-test the pipeline
+  without a logged-in Telegram account.
+* **`combine_parser_jobs` / `combine_parser_results`** — bookkeeping
+  tables (alembic ``d8a1c5b9f2e4``).
+
+### REST API (`/api/combine/parsers`)
+
+```
+GET    /jobs                              -> list jobs
+POST   /jobs                              -> submit a job
+GET    /jobs/{id}                         -> job details
+DELETE /jobs/{id}                         -> remove job (cascades results)
+POST   /jobs/{id}/cancel                  -> mark cancelled (idempotent)
+POST   /jobs/{id}/complete                -> {success, error?} -> mark done/failed
+GET    /jobs/{id}/results                 -> paginated results (offset/limit)
+POST   /jobs/{id}/results                 -> push a batch (executor or operator)
+POST   /jobs/{id}/run-stub                -> run StubParserExecutor end-to-end
+```
+
+The `/results` and `/complete` endpoints are the integration point for
+the future executor: a worker subscribed to the queue picks up pending
+jobs, runs Telethon calls, POSTs entities to `/results`, and finally
+posts to `/complete`.
+
 ## Next sprints
 
-1. **Sprint 3 — module 7**: 4 parser kinds (users / channels / chats /
-   by-message) with arq job queue.
-2. **Sprint 4 — module 3**: neuro-commenting campaigns.
-3. **Sprint 5 — module 6**: mass reactions.
-6. **Sprint 6 — module 8**: analytics aggregator.
-7. **Sprint 7**: React + Vite + shadcn/ui front-end, auth, production deploy.
+1. **Sprint 4 — module 3**: neuro-commenting campaigns.
+2. **Sprint 5 — module 6**: mass reactions.
+3. **Sprint 6 — module 8**: analytics aggregator.
+4. **Sprint 7**: React + Vite + shadcn/ui front-end, auth, production deploy.
