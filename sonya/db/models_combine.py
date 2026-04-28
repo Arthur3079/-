@@ -15,6 +15,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     DateTime,
@@ -291,11 +292,114 @@ class WarmingAction(Base):
     job: Mapped[WarmingJob] = relationship(back_populates="actions")
 
 
+# ---------- PARSERS ----------
+
+
+class ParserKind(StrEnum):
+    """Four parser flavours the combine supports.
+
+    * ``users_in_chat``        — list members of a public chat/channel.
+    * ``channels_of_user``     — list public channels a user has joined.
+    * ``chat_history``         — fetch recent messages in a peer.
+    * ``users_by_message``     — given a search query, find authors whose
+      messages match it (used for keyword targeting).
+    """
+
+    USERS_IN_CHAT = "users_in_chat"
+    CHANNELS_OF_USER = "channels_of_user"
+    CHAT_HISTORY = "chat_history"
+    USERS_BY_MESSAGE = "users_by_message"
+
+
+class ParserJobStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ParserResultKind(StrEnum):
+    USER = "user"
+    CHANNEL = "channel"
+    MESSAGE = "message"
+
+
+class ParserJob(Base):
+    """One parsing task — runs against a single :class:`Account`.
+
+    The actual Telethon work is done by an external executor (Sprint 7);
+    this row tracks intent + status + result count.
+    """
+
+    __tablename__ = "combine_parser_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    account_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("combine_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    kind: Mapped[ParserKind] = mapped_column(Enum(ParserKind), nullable=False)
+    target: Mapped[str] = mapped_column(String(255), nullable=False)
+    """Free-form target — channel username, user id, or search query."""
+
+    params: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    """Per-kind extra knobs (e.g. ``{"limit": 200}``)."""
+
+    status: Mapped[ParserJobStatus] = mapped_column(
+        Enum(ParserJobStatus), default=ParserJobStatus.PENDING, nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+    result_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+
+    results: Mapped[list[ParserResult]] = relationship(
+        back_populates="job", cascade="all, delete-orphan"
+    )
+
+
+class ParserResult(Base):
+    """A single entity emitted by a parser job."""
+
+    __tablename__ = "combine_parser_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("combine_parser_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    kind: Mapped[ParserResultKind] = mapped_column(Enum(ParserResultKind), nullable=False)
+    tg_id: Mapped[int | None] = mapped_column(Integer)
+    """Telegram-side numeric id (user id / channel id / message id)."""
+    username: Mapped[str | None] = mapped_column(String(64))
+    title: Mapped[str | None] = mapped_column(String(255))
+    """Display name / channel title / message snippet."""
+    extra: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+
+    job: Mapped[ParserJob] = relationship(back_populates="results")
+
+
 __all__ = [
     "Account",
     "AccountRole",
     "AccountStatus",
     "Owner",
+    "ParserJob",
+    "ParserJobStatus",
+    "ParserKind",
+    "ParserResult",
+    "ParserResultKind",
     "Proxy",
     "ProxyHealth",
     "ProxyType",
