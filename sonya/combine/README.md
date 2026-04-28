@@ -9,7 +9,7 @@ modules so the stack covers the full combine.
 | - | ----------------- | -------------------------- | ----------- |
 | 1 | Account Manager   | `sonya.combine.accounts`   | Sprint 1: CRUD + Telethon login + health check + Fernet session encryption |
 | 2 | Account Warming   | `sonya.combine.warming`    | Sprint 2: planner + trust score updater + REST jobs |
-| 3 | Neuro-Commenting  | `sonya.combine.commenting` | Planned     |
+| 3 | Neuro-Commenting  | `sonya.combine.commenting` | Sprint 4: campaigns + observed posts + LLM comments |
 | 4 | Neuro-Chatting    | `sonya.dialogue` (existing) | Shipped    |
 | 5 | NeuroDialogs      | `sonya.dialogue` (existing) | Shipped    |
 | 6 | Mass Reactions    | `sonya.combine.reactions`  | Planned     |
@@ -156,9 +156,54 @@ the future executor: a worker subscribed to the queue picks up pending
 jobs, runs Telethon calls, POSTs entities to `/results`, and finally
 posts to `/complete`.
 
+## Sprint 4 — Commenting module
+
+`sonya.combine.commenting` runs *campaigns* of automated comments under
+target channels. A campaign owns: a list of channels to monitor, a pool
+of accounts to comment from, an LLM prompt template, and rate limits.
+
+### Lifecycle
+
+```
+draft  ──start──▶  running  ◀──pause/resume──▶  paused
+                       │                             │
+                       └──────── archive ────────────┘
+```
+
+`archived` is terminal — every lifecycle endpoint returns 409 once the
+campaign is archived.
+
+### Worker contract (Sprint 7)
+
+The (future) worker:
+
+1. Picks `running` campaigns.
+2. For each `target_channel`, watches Telegram for new posts and POSTs
+   `/campaigns/{id}/posts` (idempotent on `(campaign, channel, msg_id)`).
+3. For each `new` post, asks an LLM to draft a comment (or uses
+   `/render-stub` in dev), creating a `Comment(status=generated)`.
+4. Tries to post the comment to Telegram, then records the outcome via
+   `/comments/{id}/record` — `posted` or `failed`. The post advances to
+   `commented` on first success.
+
+### REST API (`/api/combine/commenting`)
+
+```
+GET    /campaigns                                        -> list
+POST   /campaigns                                        -> create (draft)
+GET    /campaigns/{id}                                   -> details
+PATCH  /campaigns/{id}                                   -> update
+DELETE /campaigns/{id}                                   -> delete (cascades)
+POST   /campaigns/{id}/start    /pause    /archive       -> lifecycle
+GET    /campaigns/{id}/posts                             -> list observed posts
+POST   /campaigns/{id}/posts                             -> push observed post
+POST   /campaigns/{id}/posts/{pid}/render-stub           -> stub renderer
+GET    /campaigns/{id}/posts/{pid}/comments              -> list comments
+POST   /campaigns/{id}/posts/{pid}/comments/{cid}/record -> record outcome
+```
+
 ## Next sprints
 
-1. **Sprint 4 — module 3**: neuro-commenting campaigns.
-2. **Sprint 5 — module 6**: mass reactions.
-3. **Sprint 6 — module 8**: analytics aggregator.
-4. **Sprint 7**: React + Vite + shadcn/ui front-end, auth, production deploy.
+1. **Sprint 5 — module 6**: mass reactions.
+2. **Sprint 6 — module 8**: analytics aggregator.
+3. **Sprint 7**: React + Vite + shadcn/ui front-end, auth, production deploy.

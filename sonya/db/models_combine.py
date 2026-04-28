@@ -390,10 +390,156 @@ class ParserResult(Base):
     job: Mapped[ParserJob] = relationship(back_populates="results")
 
 
+# ---------- COMMENTING ----------
+
+
+class CommentingCampaignStatus(StrEnum):
+    DRAFT = "draft"
+    RUNNING = "running"
+    PAUSED = "paused"
+    ARCHIVED = "archived"
+
+
+class ObservedPostStatus(StrEnum):
+    """Lifecycle of a post the campaign has spotted."""
+
+    NEW = "new"
+    QUEUED = "queued"
+    COMMENTED = "commented"
+    SKIPPED = "skipped"
+
+
+class CommentStatus(StrEnum):
+    PENDING = "pending"
+    GENERATED = "generated"
+    POSTED = "posted"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class CommentingCampaign(Base):
+    """One auto-comment campaign — config + lifecycle state.
+
+    Owns a list of target channels (stored as JSON to keep this sprint
+    schema-free of a separate junction table) and a pool of accounts that
+    may be used to post comments. The actual posting work is done by an
+    external executor (Sprint 7).
+    """
+
+    __tablename__ = "combine_commenting_campaigns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[CommentingCampaignStatus] = mapped_column(
+        Enum(CommentingCampaignStatus),
+        default=CommentingCampaignStatus.DRAFT,
+        nullable=False,
+    )
+
+    target_channels: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    """Channel usernames or peer ids the worker should monitor."""
+
+    account_ids: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    """Pool of `combine_accounts.id` values. Posting picks one round-robin."""
+
+    prompt_template: Mapped[str] = mapped_column(Text, nullable=False)
+    """LLM prompt template — receives the post text via ``{post}`` placeholder."""
+
+    min_delay_seconds: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    max_delay_seconds: Mapped[int] = mapped_column(Integer, default=300, nullable=False)
+    max_comments_per_day: Mapped[int] = mapped_column(Integer, default=20, nullable=False)
+
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str | None] = mapped_column(Text)
+
+    posts: Mapped[list[ObservedPost]] = relationship(
+        back_populates="campaign",
+        cascade="all, delete-orphan",
+        order_by="ObservedPost.id.desc()",
+    )
+
+
+class ObservedPost(Base):
+    """A post in a campaign's target channel, picked up by the worker."""
+
+    __tablename__ = "combine_commenting_posts"
+    __table_args__ = (
+        UniqueConstraint(
+            "campaign_id",
+            "channel",
+            "tg_message_id",
+            name="uq_observed_post_per_campaign",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    campaign_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("combine_commenting_campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    channel: Mapped[str] = mapped_column(String(255), nullable=False)
+    tg_message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    text: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[ObservedPostStatus] = mapped_column(
+        Enum(ObservedPostStatus),
+        default=ObservedPostStatus.NEW,
+        nullable=False,
+    )
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    campaign: Mapped[CommentingCampaign] = relationship(back_populates="posts")
+    comments: Mapped[list[Comment]] = relationship(
+        back_populates="post", cascade="all, delete-orphan"
+    )
+
+
+class Comment(Base):
+    """One generated comment (and its lifecycle) tied to an observed post."""
+
+    __tablename__ = "combine_commenting_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    post_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("combine_commenting_posts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    account_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("combine_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    text: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[CommentStatus] = mapped_column(
+        Enum(CommentStatus), default=CommentStatus.PENDING, nullable=False
+    )
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+    tg_comment_id: Mapped[int | None] = mapped_column(BigInteger)
+
+    post: Mapped[ObservedPost] = relationship(back_populates="comments")
+
+
 __all__ = [
     "Account",
     "AccountRole",
     "AccountStatus",
+    "Comment",
+    "CommentStatus",
+    "CommentingCampaign",
+    "CommentingCampaignStatus",
+    "ObservedPost",
+    "ObservedPostStatus",
     "Owner",
     "ParserJob",
     "ParserJobStatus",
