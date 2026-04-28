@@ -8,7 +8,7 @@ modules so the stack covers the full combine.
 | # | Module            | Package                    | Status      |
 | - | ----------------- | -------------------------- | ----------- |
 | 1 | Account Manager   | `sonya.combine.accounts`   | Sprint 1: CRUD + Telethon login + health check + Fernet session encryption |
-| 2 | Account Warming   | `sonya.combine.warming`    | Planned     |
+| 2 | Account Warming   | `sonya.combine.warming`    | Sprint 2: planner + trust score updater + REST jobs |
 | 3 | Neuro-Commenting  | `sonya.combine.commenting` | Planned     |
 | 4 | Neuro-Chatting    | `sonya.dialogue` (existing) | Shipped    |
 | 5 | NeuroDialogs      | `sonya.dialogue` (existing) | Shipped    |
@@ -78,12 +78,44 @@ are encrypted with Fernet before INSERT/UPDATE and decrypted on read via
 `sonya.combine.security`. When unset, secrets are stored as-is (acceptable
 for local dev only).
 
+## Sprint 2 — Warming module
+
+`sonya.combine.warming` schedules low-risk imitation activity on fresh
+accounts so they don't trip Telegram's anti-spam heuristics on day 1.
+
+### Components
+
+* **`WarmingPlanner`** — produces an ordered list of `WarmingAction`
+  rows for an account. Risk increases with day index: day 0 is just
+  subscribe + read history; reactions appear from ~day 3; idle DMs
+  (highest risk) only in the last quarter, and only when
+  `idle_chat_targets` is non-empty.
+* **`TrustScoreUpdater`** — applies +/- deltas to `Account.trust_score`,
+  clamped to 0..100. Marks the parent `WarmingJob` as `RUNNING`/`COMPLETED`
+  as actions terminate, and bumps `Account.status` from `NEW` → `WARMING`
+  → `ACTIVE` once `trust_score >= job.target_trust_score`.
+
+### REST API (`/api/combine/warming`)
+
+```
+GET    /jobs                                  -> list jobs
+POST   /jobs                                  -> create job + plan
+GET    /jobs/{id}                             -> job + actions
+POST   /jobs/{id}/pause   /resume   /cancel   -> lifecycle controls
+DELETE /jobs/{id}                             -> remove job
+POST   /jobs/{id}/actions/{aid}/complete      -> {success, error?} -> updates trust
+```
+
+The `/complete` endpoint is the integration point for the eventual
+background executor (Sprint 7): when a Telethon worker subscribes to a
+channel, it POSTs the result here and the trust update happens
+atomically.
+
 ## Next sprints
 
-1. **Sprint 2 — module 2**: warm-up planner + trust score updater.
-3. **Sprint 3 — module 7**: 4 parser kinds (users / channels / chats /
+1. **Sprint 3 — module 7**: 4 parser kinds (users / channels / chats /
    by-message) with arq job queue.
-4. **Sprint 4 — module 3**: neuro-commenting campaigns.
-5. **Sprint 5 — module 6**: mass reactions.
+2. **Sprint 4 — module 3**: neuro-commenting campaigns.
+3. **Sprint 5 — module 6**: mass reactions.
 6. **Sprint 6 — module 8**: analytics aggregator.
 7. **Sprint 7**: React + Vite + shadcn/ui front-end, auth, production deploy.

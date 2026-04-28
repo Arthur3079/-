@@ -65,7 +65,7 @@ exclude = ["tests*", "knowledge*", "migrations*"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-exclude = ["migrations/versions", "knowledge", ".venv"]
+exclude = ["migrations/versions", "knowledge", ".venv", ".git"]
 
 [tool.ruff.lint]
 select = [

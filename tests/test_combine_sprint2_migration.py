@@ -1,8 +1,7 @@
-"""Migration smoke test for combine sprint 0 (owners / accounts / proxies).
+"""Migration smoke test for combine sprint 2 (warming jobs / actions).
 
-Mirrors ``test_layer1_migration.py``: upgrade → downgrade → upgrade round
-trip on an isolated SQLite file, plus a check that the seed owner row is
-inserted by the upgrade.
+Mirrors ``test_combine_sprint0_migration.py``: upgrade → downgrade → upgrade
+round trip on an isolated SQLite file.
 """
 
 from __future__ import annotations
@@ -15,7 +14,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-NEW_TABLES = {"owners", "combine_accounts", "combine_proxies"}
+NEW_TABLES = {"combine_warming_jobs", "combine_warming_actions"}
+SPRINT2_REVISION = "c2f9a8b6d4e7"
+PARENT_REVISION = "b7e1c4f8a2d3"
 
 
 def _alembic(args: list[str], db_path: Path) -> subprocess.CompletedProcess[str]:
@@ -37,28 +38,23 @@ def _table_names(db_path: Path) -> set[str]:
     return {r[0] for r in rows}
 
 
-def test_combine_sprint0_migration_round_trip() -> None:
+def test_combine_sprint2_migration_round_trip() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        db_path = Path(tmp) / "test_combine_sprint0.db"
+        db_path = Path(tmp) / "test_combine_sprint2.db"
 
-        # Pin to Sprint 0 head — the round-trip we want to check is just
-        # this migration, not whatever was added on top of it later.
-        up = _alembic(["upgrade", "b7e1c4f8a2d3"], db_path)
-        assert up.returncode == 0, f"upgrade to b7e1c4f8a2d3 failed: {up.stderr}"
+        up = _alembic(["upgrade", SPRINT2_REVISION], db_path)
+        assert up.returncode == 0, f"upgrade to {SPRINT2_REVISION} failed: {up.stderr}"
         tables = _table_names(db_path)
         missing = NEW_TABLES - tables
         assert not missing, f"missing tables after upgrade: {missing}"
 
-        # The migration seeds a single default owner.
-        with sqlite3.connect(str(db_path)) as conn:
-            rows = conn.execute("SELECT id, name FROM owners").fetchall()
-        assert rows == [(1, "default")], f"expected one seeded owner, got {rows!r}"
-
-        down = _alembic(["downgrade", "-1"], db_path)
-        assert down.returncode == 0, f"downgrade -1 failed: {down.stderr}"
+        down = _alembic(["downgrade", PARENT_REVISION], db_path)
+        assert down.returncode == 0, f"downgrade failed: {down.stderr}"
         tables_after_down = _table_names(db_path)
         leftover = NEW_TABLES & tables_after_down
         assert not leftover, f"tables still present after downgrade: {leftover}"
+        # Sprint 0 tables must still be there.
+        assert "combine_accounts" in tables_after_down
 
-        up2 = _alembic(["upgrade", "head"], db_path)
+        up2 = _alembic(["upgrade", SPRINT2_REVISION], db_path)
         assert up2.returncode == 0, f"second upgrade failed: {up2.stderr}"

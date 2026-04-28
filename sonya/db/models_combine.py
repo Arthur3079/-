@@ -191,6 +191,106 @@ class Account(Base):
     proxy: Mapped[Proxy | None] = relationship(back_populates="accounts")
 
 
+# ---------- WARMING ----------
+
+
+class WarmingJobStatus(StrEnum):
+    """Lifecycle of a warming job.
+
+    * ``pending``   — created, no actions executed yet.
+    * ``running``   — at least one action has been picked up by the executor.
+    * ``paused``    — operator paused the job; executor skips it.
+    * ``completed`` — every action is in a terminal state (done/failed/skipped).
+    * ``cancelled`` — operator cancelled the job; remaining actions are skipped.
+    """
+
+    PENDING = "pending"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class WarmingActionKind(StrEnum):
+    """One step of a warming plan."""
+
+    SUBSCRIBE_CHANNEL = "subscribe_channel"
+    READ_HISTORY = "read_history"
+    REACT_POST = "react_post"
+    SEND_IDLE_MESSAGE = "send_idle_message"
+
+
+class WarmingActionStatus(StrEnum):
+    PENDING = "pending"
+    DONE = "done"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class WarmingJob(Base):
+    """A scheduled warm-up sequence for one :class:`Account`.
+
+    The plan is stored as a list of :class:`WarmingAction` rows so the
+    executor can pick the next due action without recomputing the whole
+    schedule, and so the operator can see step-by-step progress.
+    """
+
+    __tablename__ = "combine_warming_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("combine_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    status: Mapped[WarmingJobStatus] = mapped_column(
+        Enum(WarmingJobStatus), default=WarmingJobStatus.PENDING, nullable=False
+    )
+    target_trust_score: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str | None] = mapped_column(Text)
+
+    actions: Mapped[list[WarmingAction]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="WarmingAction.scheduled_at",
+    )
+    account: Mapped[Account] = relationship()
+
+
+class WarmingAction(Base):
+    """A single planned step within a :class:`WarmingJob`."""
+
+    __tablename__ = "combine_warming_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("combine_warming_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    kind: Mapped[WarmingActionKind] = mapped_column(Enum(WarmingActionKind), nullable=False)
+    target: Mapped[str | None] = mapped_column(String(255))
+    """Free-form target identifier — channel username, peer id, etc."""
+
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[WarmingActionStatus] = mapped_column(
+        Enum(WarmingActionStatus), default=WarmingActionStatus.PENDING, nullable=False
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    trust_delta: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    """How much trust_score the parent account gains on success (capped at 100)."""
+
+    job: Mapped[WarmingJob] = relationship(back_populates="actions")
+
+
 __all__ = [
     "Account",
     "AccountRole",
@@ -199,4 +299,9 @@ __all__ = [
     "Proxy",
     "ProxyHealth",
     "ProxyType",
+    "WarmingAction",
+    "WarmingActionKind",
+    "WarmingActionStatus",
+    "WarmingJob",
+    "WarmingJobStatus",
 ]
