@@ -31,6 +31,8 @@ dependencies = [
     # Misc
     "python-dotenv>=1.0",
     "tenacity>=8.5",
+    # Symmetric encryption for combine session_blob / proxy passwords
+    "cryptography>=43.0",
 ]
 
 [project.optional-dependencies]

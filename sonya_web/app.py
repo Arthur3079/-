@@ -23,6 +23,8 @@ from fastapi.staticfiles import StaticFiles
 from sonya_web.routers import (
     admin_actions,
     clients,
+    combine_accounts,
+    combine_proxies,
     dashboard,
     events_stream,
     funnel,
@@ -66,6 +68,8 @@ def create_app() -> FastAPI:
     app.include_router(sales.router, prefix="/api", tags=["sales"])
     app.include_router(llm.router, prefix="/api", tags=["llm"])
     app.include_router(admin_actions.router, prefix="/api", tags=["admin"])
+    app.include_router(combine_proxies.router, prefix="/api")
+    app.include_router(combine_accounts.router, prefix="/api")
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:
