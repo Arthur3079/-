@@ -27,6 +27,7 @@ from sonya_web.routers import (
     combine_commenting,
     combine_parsers,
     combine_proxies,
+    combine_reactions,
     combine_warming,
     dashboard,
     events_stream,
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(combine_warming.router, prefix="/api")
     app.include_router(combine_parsers.router, prefix="/api")
     app.include_router(combine_commenting.router, prefix="/api")
+    app.include_router(combine_reactions.router, prefix="/api")
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:

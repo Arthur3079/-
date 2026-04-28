@@ -530,6 +530,142 @@ class Comment(Base):
     post: Mapped[ObservedPost] = relationship(back_populates="comments")
 
 
+# ---------- REACTIONS ----------
+
+
+class ReactionCampaignStatus(StrEnum):
+    DRAFT = "draft"
+    RUNNING = "running"
+    PAUSED = "paused"
+    ARCHIVED = "archived"
+
+
+class ReactionTargetStatus(StrEnum):
+    """Lifecycle of a single post that the campaign should react to."""
+
+    PENDING = "pending"
+    PLANNED = "planned"
+    DONE = "done"
+    SKIPPED = "skipped"
+
+
+class ReactionStatus(StrEnum):
+    """Lifecycle of a single (target × account × emoji) attempt."""
+
+    PENDING = "pending"
+    POSTED = "posted"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class ReactionCampaign(Base):
+    """One mass-reaction campaign — config + lifecycle state."""
+
+    __tablename__ = "combine_reaction_campaigns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("owners.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[ReactionCampaignStatus] = mapped_column(
+        Enum(ReactionCampaignStatus),
+        default=ReactionCampaignStatus.DRAFT,
+        nullable=False,
+    )
+
+    target_channels: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    """Channel usernames or peer ids the worker monitors."""
+
+    account_ids: Mapped[list[int]] = mapped_column(JSON, default=list, nullable=False)
+    """Pool of `combine_accounts.id` values to distribute reactions across."""
+
+    emojis: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    """Allowed reaction emojis. Planner picks per-account from this set."""
+
+    accounts_per_post: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    """How many accounts should react under each observed target post."""
+
+    max_reactions_per_day: Mapped[int] = mapped_column(Integer, default=200, nullable=False)
+
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str | None] = mapped_column(Text)
+
+    targets: Mapped[list[ReactionTarget]] = relationship(
+        back_populates="campaign",
+        cascade="all, delete-orphan",
+        order_by="ReactionTarget.id.desc()",
+    )
+
+
+class ReactionTarget(Base):
+    """A single post the campaign should leave reactions under."""
+
+    __tablename__ = "combine_reaction_targets"
+    __table_args__ = (
+        UniqueConstraint(
+            "campaign_id",
+            "channel",
+            "tg_message_id",
+            name="uq_reaction_target_per_campaign",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    campaign_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("combine_reaction_campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    channel: Mapped[str] = mapped_column(String(255), nullable=False)
+    tg_message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[ReactionTargetStatus] = mapped_column(
+        Enum(ReactionTargetStatus),
+        default=ReactionTargetStatus.PENDING,
+        nullable=False,
+    )
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    campaign: Mapped[ReactionCampaign] = relationship(back_populates="targets")
+    reactions: Mapped[list[Reaction]] = relationship(
+        back_populates="target",
+        cascade="all, delete-orphan",
+        order_by="Reaction.id.asc()",
+    )
+
+
+class Reaction(Base):
+    """A single (target × account × emoji) reaction attempt."""
+
+    __tablename__ = "combine_reactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("combine_reaction_targets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    account_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("combine_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    emoji: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[ReactionStatus] = mapped_column(
+        Enum(ReactionStatus), default=ReactionStatus.PENDING, nullable=False
+    )
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+
+    target: Mapped[ReactionTarget] = relationship(back_populates="reactions")
+
+
 __all__ = [
     "Account",
     "AccountRole",
@@ -549,6 +685,12 @@ __all__ = [
     "Proxy",
     "ProxyHealth",
     "ProxyType",
+    "Reaction",
+    "ReactionCampaign",
+    "ReactionCampaignStatus",
+    "ReactionStatus",
+    "ReactionTarget",
+    "ReactionTargetStatus",
     "WarmingAction",
     "WarmingActionKind",
     "WarmingActionStatus",

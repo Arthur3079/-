@@ -12,7 +12,7 @@ modules so the stack covers the full combine.
 | 3 | Neuro-Commenting  | `sonya.combine.commenting` | Sprint 4: campaigns + observed posts + LLM comments |
 | 4 | Neuro-Chatting    | `sonya.dialogue` (existing) | Shipped    |
 | 5 | NeuroDialogs      | `sonya.dialogue` (existing) | Shipped    |
-| 6 | Mass Reactions    | `sonya.combine.reactions`  | Planned     |
+| 6 | Mass Reactions    | `sonya.combine.reactions`  | Sprint 5: campaigns + targets + planner + REST |
 | 7 | Parsers           | `sonya.combine.parsers`    | Sprint 3: 4 parser kinds + REST jobs + stub executor |
 | 8 | Analytics         | `sonya.combine.analytics`  | Partly shipped via `sonya_web.dashboard` |
 
@@ -202,8 +202,60 @@ GET    /campaigns/{id}/posts/{pid}/comments              -> list comments
 POST   /campaigns/{id}/posts/{pid}/comments/{cid}/record -> record outcome
 ```
 
+## Sprint 5 — Reactions module
+
+`sonya.combine.reactions` runs *mass-reaction campaigns* — distribute
+reactions from a configured emoji set across a pool of accounts under
+each target post.
+
+### Lifecycle
+
+```
+draft  ──start──▶  running  ◀──pause/resume──▶  paused
+                       │                             │
+                       └──────── archive ────────────┘
+```
+
+Same lifecycle and 409-on-archive semantics as the commenting module.
+`/start` requires both `account_ids` and `emojis` to be non-empty.
+
+### Planner
+
+`ReactionPlanner` is **deterministic**: re-running it for the same
+campaign+target produces the same `(account, emoji)` set. The seed is
+`target.id ^ campaign.id`. Each account gets at most one emoji per
+target. Emojis are sampled with replacement (matches real-world
+distribution where the same emoji shows up on multiple accounts).
+
+### Worker contract (Sprint 7)
+
+1. Worker watches `target_channels` and POSTs new posts to
+   `/campaigns/{id}/targets` (idempotent on
+   `(campaign, channel, msg_id)`).
+2. For each `pending` target, calls `/targets/{tid}/plan` — server
+   inserts pending `Reaction` rows and moves the target to `planned`.
+3. Worker iterates the rows, posts each one to Telegram, then calls
+   `/reactions/{rid}/record` — `posted` or `failed`.
+4. Once all reactions for a target are terminal, the target advances
+   to `done`.
+
+### REST API (`/api/combine/reactions`)
+
+```
+GET    /campaigns                                              -> list
+POST   /campaigns                                              -> create (draft)
+GET    /campaigns/{id}                                         -> details
+PATCH  /campaigns/{id}                                         -> update
+DELETE /campaigns/{id}                                         -> delete (cascades)
+POST   /campaigns/{id}/start    /pause    /archive             -> lifecycle
+GET    /campaigns/{id}/targets                                 -> list targets
+POST   /campaigns/{id}/targets                                 -> push target
+POST   /campaigns/{id}/targets/{tid}/plan                      -> assign reactions
+GET    /campaigns/{id}/targets/{tid}/reactions                 -> list reactions
+POST   /campaigns/{id}/targets/{tid}/reactions/{rid}/record    -> record outcome
+```
+
 ## Next sprints
 
-1. **Sprint 5 — module 6**: mass reactions.
-2. **Sprint 6 — module 8**: analytics aggregator.
-3. **Sprint 7**: React + Vite + shadcn/ui front-end, auth, production deploy.
+1. **Sprint 6 — module 8**: analytics aggregator.
+2. **Sprint 7**: React + Vite + shadcn/ui front-end, auth, production deploy.
