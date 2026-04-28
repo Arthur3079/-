@@ -74,6 +74,16 @@ class Settings(BaseSettings):
     # --- DB ---
     database_url: str = "sqlite+aiosqlite:///./sonya.db"
 
+    # --- Combine (multi-account, GramGPT-clone) ---
+    # Symmetric encryption key (Fernet) for `combine_accounts.session_blob` and
+    # `combine_proxies.password`. 32 url-safe base64 bytes; generate with::
+    #
+    #     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    #
+    # Empty/None disables encryption (data stored as-is); fine for local dev,
+    # do **not** ship to production with this unset.
+    combine_secret_key: str | None = None
+
     # --- Logging ---
     log_level: str = "INFO"
     log_dir: Path = PROJECT_ROOT / "logs"
