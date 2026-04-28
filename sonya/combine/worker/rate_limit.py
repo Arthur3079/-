@@ -100,8 +100,13 @@ class AccountRateLimiter:
         async with self._init_lock:
             sem = self._semaphore_for(account_id)
 
-        await self._wait_out_flood(account_id)
+        # Flood check MUST run inside the semaphore so a task that's been
+        # queueing on the semaphore re-observes any flood that the previous
+        # holder recorded just before releasing. Otherwise Task B can pass
+        # the flood check while no flood is active, block on the semaphore
+        # while Task A records a flood, and then proceed without backing off.
         async with sem:
+            await self._wait_out_flood(account_id)
             yield
 
     def record_flood_wait(self, account_id: int, seconds: int) -> None:

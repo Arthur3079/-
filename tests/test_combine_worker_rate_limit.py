@@ -146,6 +146,51 @@ async def test_flood_wait_already_elapsed_skips_sleep() -> None:
     assert sleep.calls == []
 
 
+@pytest.mark.asyncio
+async def test_flood_wait_recorded_inside_critical_section_blocks_queued_task() -> None:
+    """Regression: Task B was queued on the semaphore at the moment Task A,
+    just before releasing the semaphore, recorded a FloodWait. Task B must
+    re-observe that flood and back off — *not* proceed straight through.
+
+    Before the fix the flood check happened *before* `async with sem`, so
+    Task B's check ran while no flood was active, then it blocked on the
+    semaphore, and finally proceeded without honouring the freshly-recorded
+    flood.
+    """
+
+    clock = _FakeClock()
+    sleep = _FakeSleep(clock)
+    limiter = AccountRateLimiter(clock=clock, sleep=sleep)
+
+    started_inside = asyncio.Event()
+    release_a = asyncio.Event()
+
+    async def task_a() -> None:
+        async with limiter.acquire(account_id=1):
+            started_inside.set()
+            await release_a.wait()
+            limiter.record_flood_wait(1, 60)
+
+    async def task_b() -> None:
+        # Wait until A is inside the semaphore so B is guaranteed to block.
+        await started_inside.wait()
+        async with limiter.acquire(account_id=1):
+            pass
+
+    a = asyncio.create_task(task_a())
+    b = asyncio.create_task(task_b())
+
+    # Let A start, queue B on the semaphore, then release A.
+    await started_inside.wait()
+    await asyncio.sleep(0)  # let B reach `async with limiter.acquire`
+    release_a.set()
+
+    await asyncio.gather(a, b)
+
+    # B must have slept the full 60s back-off recorded by A.
+    assert sleep.calls == [pytest.approx(60.0)]
+
+
 def test_record_flood_wait_ignores_non_positive() -> None:
     limiter = AccountRateLimiter()
     limiter.record_flood_wait(account_id=1, seconds=0)
