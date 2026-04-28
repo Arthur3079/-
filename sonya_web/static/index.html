@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sonya Ops Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"
+    ></script>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div x-data="opsConsole()" class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">S</div>
+          <div>
+            <h1>Sonya Ops Console</h1>
+            <p>Enterprise operations</p>
+          </div>
+        </div>
+
+        <nav class="main-nav">
+          <template x-for="item in nav" :key="item.id">
+            <button
+              class="nav-btn"
+              :class="{ active: tab === item.id }"
+              @click="tab = item.id"
+            >
+              <span x-text="item.label"></span>
+              <span class="nav-counter" x-show="item.count" x-text="item.count"></span>
+            </button>
+          </template>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="kicker">Операционный контур</p>
+            <h2 x-text="currentLabel()"></h2>
+          </div>
+          <div class="topbar-right">
+            <div class="status" :class="systemState.ok ? 'ok' : 'bad'">
+              <span class="dot"></span>
+              <span x-text="systemState.ok ? 'Система работает' : 'Требует внимания'"></span>
+            </div>
+            <button class="btn primary">Следующее действие</button>
+          </div>
+        </header>
+
+        <section x-show="tab === 'operations'" class="screen stack">
+          <article class="card">
+            <div class="card-head">
+              <h3>Центр операций · Account Health</h3>
+              <span class="muted">Последнее обновление: 12:46 UTC</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Account</th><th>Telegram</th><th>Runtime</th><th>LLM</th><th>Payments</th><th>Scheduler</th><th>Safety</th><th>Last event</th><th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="acc in accountHealth" :key="acc.account">
+                    <tr>
+                      <td x-text="acc.account"></td>
+                      <td><span class="pill" :class="acc.telegram.tone" x-text="acc.telegram.label"></span></td>
+                      <td><span class="pill" :class="acc.runtime.tone" x-text="acc.runtime.label"></span></td>
+                      <td><span class="pill" :class="acc.llm.tone" x-text="acc.llm.label"></span></td>
+                      <td><span class="pill" :class="acc.payments.tone" x-text="acc.payments.label"></span></td>
+                      <td><span class="pill" :class="acc.scheduler.tone" x-text="acc.scheduler.label"></span></td>
+                      <td><span class="pill" :class="acc.safety.tone" x-text="acc.safety.label"></span></td>
+                      <td class="muted" x-text="acc.event"></td>
+                      <td><button class="btn ghost">Open runtime</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <h3>Priority Queue</h3>
+              <span class="muted">Требует ответа: 14</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Priority</th><th>Account</th><th>Fan</th><th>Process</th><th>Signal</th><th>Risk</th><th>SLA</th><th>Next action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="row in priorityQueue" :key="row.fan">
+                    <tr>
+                      <td><span class="pill" :class="row.priority.tone" x-text="row.priority.label"></span></td>
+                      <td x-text="row.account"></td>
+                      <td x-text="row.fan"></td>
+                      <td x-text="row.process"></td>
+                      <td class="muted" x-text="row.signal"></td>
+                      <td><span class="pill" :class="row.risk.tone" x-text="row.risk.label"></span></td>
+                      <td x-text="row.sla"></td>
+                      <td><button class="btn">Следующее действие</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <div class="grid-5">
+            <article class="card" x-data="{items: kpi.conversation}"><h3>Conversation</h3><ul class="metric-list"><template x-for="i in items" :key="i.label"><li><span x-text="i.label"></span><strong x-text="i.value"></strong></li></template></ul></article>
+            <article class="card" x-data="{items: kpi.pipeline}"><h3>Pipeline</h3><ul class="metric-list"><template x-for="i in items" :key="i.label"><li><span x-text="i.label"></span><strong x-text="i.value"></strong></li></template></ul></article>
+            <article class="card" x-data="{items: kpi.revenue}"><h3>Revenue</h3><ul class="metric-list"><template x-for="i in items" :key="i.label"><li><span x-text="i.label"></span><strong x-text="i.value"></strong></li></template></ul></article>
+            <article class="card" x-data="{items: kpi.safety}"><h3>Safety</h3><ul class="metric-list"><template x-for="i in items" :key="i.label"><li><span x-text="i.label"></span><strong x-text="i.value"></strong></li></template></ul></article>
+            <article class="card" x-data="{items: kpi.runtime}"><h3>Runtime</h3><ul class="metric-list"><template x-for="i in items" :key="i.label"><li><span x-text="i.label"></span><strong x-text="i.value"></strong></li></template></ul></article>
+          </div>
+        </section>
+
+        <section x-show="tab === 'accounts'" class="screen grid-3">
+          <article class="card list-pane">
+            <h3>Аккаунты</h3>
+            <template x-for="acc in accounts" :key="acc.name">
+              <button class="list-item" :class="{active: selectedAccount.name===acc.name}" @click="selectedAccount = acc">
+                <div>
+                  <strong x-text="acc.name"></strong>
+                  <p x-text="acc.owner"></p>
+                </div>
+                <span class="pill" :class="acc.state.tone" x-text="acc.state.label"></span>
+              </button>
+            </template>
+          </article>
+          <article class="card detail-pane">
+            <h3>Account detail · <span x-text="selectedAccount.name"></span></h3>
+            <div class="detail-grid">
+              <div><label>Telegram status</label><strong x-text="selectedAccount.telegram"></strong></div>
+              <div><label>Runtime</label><strong x-text="selectedAccount.runtime"></strong></div>
+              <div><label>LLM</label><strong x-text="selectedAccount.llm"></strong></div>
+              <div><label>Payments</label><strong x-text="selectedAccount.payments"></strong></div>
+              <div><label>Scheduler</label><strong x-text="selectedAccount.scheduler"></strong></div>
+              <div><label>Safety</label><strong x-text="selectedAccount.safety"></strong></div>
+            </div>
+            <div class="actions-row">
+              <button class="btn warn">Pause</button>
+              <button class="btn">Resume</button>
+              <button class="btn">Open inbox</button>
+              <button class="btn">Open revenue</button>
+              <button class="btn">Open runtime logs</button>
+            </div>
+          </article>
+          <article class="card">
+            <h3>Runtime / Process controls</h3>
+            <ul class="metric-list compact">
+              <li><span>Worker pool</span><strong>6/6 online</strong></li>
+              <li><span>Cadence queue</span><strong>42 due</strong></li>
+              <li><span>Webhook drift</span><strong>0.7s</strong></li>
+              <li><span>Billing retry</span><strong>3 blocked</strong></li>
+            </ul>
+          </article>
+        </section>
+
+        <section x-show="tab === 'inbox'" class="screen grid-3">
+          <article class="card list-pane">
+            <h3>Диалоги · Smart Queue</h3>
+            <template x-for="chat in chats" :key="chat.fan">
+              <button class="list-item" :class="{active: selectedChat.fan===chat.fan}" @click="selectedChat = chat">
+                <div><strong x-text="chat.fan"></strong><p x-text="chat.signal"></p></div>
+                <span class="pill" :class="chat.waiting ? 'warn' : 'ok'" x-text="chat.waiting ? 'Ожидание' : 'Активно'"></span>
+              </button>
+            </template>
+          </article>
+          <article class="card conversation">
+            <h3>Conversation</h3>
+            <div class="msg in">Привет, хочу посмотреть приватный сет на сегодня.</div>
+            <div class="msg out">Есть VIP-пакет + voice note. Показать оффер?</div>
+            <div class="msg in">Да, но можно через Stars?</div>
+            <div class="next-action">Next Best Action: отправить оффер Stars + ограничение 20 минут.</div>
+          </article>
+          <article class="card">
+            <h3>Fan CRM</h3>
+            <ul class="metric-list compact">
+              <li><span>Stage</span><strong x-text="selectedChat.stage"></strong></li>
+              <li><span>Risk</span><strong x-text="selectedChat.risk"></strong></li>
+              <li><span>Готов к офферу</span><strong x-text="selectedChat.readiness"></strong></li>
+              <li><span>LTV</span><strong x-text="selectedChat.ltv"></strong></li>
+              <li><span>Follow-up status</span><strong>Просрочено</strong></li>
+              <li><span>Safety flags</span><strong>0</strong></li>
+            </ul>
+          </article>
+        </section>
+
+        <section x-show="tab === 'fans'" class="screen stack">
+          <article class="card">
+            <h3>Фаны CRM</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Fan</th><th>Stage</th><th>Risk</th><th>Readiness</th><th>LTV</th><th>Последняя активность</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>@mila_rose</td><td>qualify</td><td><span class="pill warn">medium</span></td><td>high</td><td>$420</td><td>4m назад</td></tr>
+                  <tr><td>@venus_ava</td><td>offer_pending</td><td><span class="pill ok">low</span></td><td>high</td><td>$780</td><td>1m назад</td></tr>
+                  <tr><td>@neo_fan</td><td>warmup</td><td><span class="pill warn">medium</span></td><td>medium</td><td>$110</td><td>19m назад</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section x-show="tab === 'revenue'" class="screen stack">
+          <article class="card"><h3>Выручка · Диагностика</h3><div class="grid-4"><div class="kpi"><label>Revenue</label><strong>$3,840</strong></div><div class="kpi"><label>Payment attempts</label><strong>92</strong></div><div class="kpi"><label>Purchases</label><strong>28</strong></div><div class="kpi"><label>Failed / refunded</label><strong>11</strong></div></div></article>
+          <article class="card"><h3>Lost revenue reasons</h3><ul class="metric-list compact"><li><span>Оффер не отправлен</span><strong>17</strong></li><li><span>Payment bot timeout</span><strong>6</strong></li><li><span>Недоставлен контент</span><strong>3</strong></li><li><span>Ручной refund</span><strong>2</strong></li></ul></article>
+          <article class="card empty"><h3>Diagnostic empty state</h3><p>Нет событий за период по аккаунту sonya-backup. Проверено: webhook, retries, catalog mapping, Stars callback.</p></article>
+        </section>
+
+        <section x-show="tab === 'offers'" class="screen"><article class="card"><h3>Офферы / Content</h3><p class="muted">Каталог сетов, performance по офферам, delivery quality и repeat logic.</p></article></section>
+
+        <section x-show="tab === 'followups'" class="screen stack">
+          <article class="card"><h3>Follow-ups</h3><div class="grid-4"><div class="kpi"><label>Просрочено</label><strong>21</strong></div><div class="kpi"><label>Due now</label><strong>8</strong></div><div class="kpi"><label>Due today</label><strong>34</strong></div><div class="kpi"><label>Due in 24h</label><strong>17</strong></div></div></article>
+          <article class="card"><div class="actions-row"><button class="btn primary">Create follow-up</button><button class="btn">Reschedule</button><button class="btn ghost">Automation rule (placeholder)</button></div></article>
+          <article class="card"><ul class="metric-list compact"><li><span>Scheduled</span><strong>129</strong></li><li><span>Executed</span><strong>442</strong></li><li><span>Cancelled</span><strong>16</strong></li></ul></article>
+        </section>
+
+        <section x-show="tab === 'safety'" class="screen stack">
+          <article class="card"><h3>Safety center</h3><ul class="metric-list compact"><li><span>events/incidents</span><strong>0</strong></li><li><span>Handoff</span><strong>1</strong></li><li><span>Suppression</span><strong>2</strong></li><li><span>Policy triggers</span><strong>0</strong></li><li><span>Risky dialogues</span><strong>1</strong></li></ul></article>
+          <article class="card empty"><p><strong>Система работает.</strong> Проверено: стоп-листы, handoff-маршрут, suppression policy, escalations SLA.</p></article>
+        </section>
+
+        <section x-show="tab === 'runtime'" class="screen stack">
+          <article class="card"><h3>Runtime</h3><div class="table-wrap"><table><thead><tr><th>Time</th><th>Stream</th><th>Event</th><th>Latency</th><th>Status</th></tr></thead><tbody><tr><td>12:44:11</td><td>scheduler</td><td>follow-up executed #4412</td><td>112ms</td><td><span class="pill ok">ok</span></td></tr><tr><td>12:43:04</td><td>telegram</td><td>failed send retry=2</td><td>2.1s</td><td><span class="pill danger">error</span></td></tr><tr><td>12:42:19</td><td>llm</td><td>dump captured token_overflow</td><td>—</td><td><span class="pill warn">warn</span></td></tr></tbody></table></div></article>
+        </section>
+
+        <section x-show="tab === 'settings'" class="screen"><article class="card"><h3>Настройки</h3><p class="muted">Team roles, API keys, webhook endpoints, alert routing, SLA windows.</p></article></section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,30 @@
+[Unit]
+Description=Sonya Telegram userbot
+Documentation=https://github.com/pvrmj88vmj-ops/AI-tg
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sonya
+Group=sonya
+WorkingDirectory=/opt/sonya
+EnvironmentFile=/opt/sonya/.env
+ExecStart=/opt/sonya/.venv/bin/python -m sonya.main
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/sonya/data /opt/sonya/logs /opt/sonya/sessions
+
+# Logs
+StandardOutput=append:/var/log/sonya/sonya.log
+StandardError=append:/var/log/sonya/sonya.log
+
+[Install]
+WantedBy=multi-user.target

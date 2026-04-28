@@ -1,0 +1,96 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonya"
+version = "0.1.0"
+description = "Sonya — AI Telegram OFM-chatter (Telethon userbot + LLM + Stars payments)"
+requires-python = ">=3.11"
+readme = "README.md"
+dependencies = [
+    # Telegram userbot
+    "telethon>=1.36",
+    # LLM (OpenAI-compatible client; talks to OpenRouter and any compatible host)
+    "openai>=1.50",
+    # LLM (Google Gemini native SDK; for LLM_PROVIDER=gemini)
+    "google-genai>=1.0",
+    # Config
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+    # DB
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "aiosqlite>=0.20",
+    # Scheduling
+    "apscheduler>=3.10",
+    # Logging
+    "loguru>=0.7",
+    # HTTP (Bot API for the separate payment bot)
+    "httpx>=0.27",
+    # Misc
+    "python-dotenv>=1.0",
+    "tenacity>=8.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+web = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.scripts]
+sonya = "sonya.main:run"
+sonya-payment-bot = "sonya.payment_bot.main:run"
+sonya-web = "sonya_web.cli:run"
+sonya-web-seed = "sonya_web.seed:_cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sonya*", "sonya_web*"]
+exclude = ["tests*", "knowledge*", "migrations*"]
+
+[tool.setuptools.package-data]
+"sonya.library.data" = ["*.json"]
+"sonya_web.static" = ["*.html", "*.css", "*.js"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["migrations/versions", "knowledge", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function-call-in-default-argument (FastAPI/typer style)
+    "UP017", # datetime.UTC alias (3.11+ only; we still support 3.10)
+    "UP042", # str + Enum (StrEnum is 3.11-only; we use a 3.10-compat shim)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true

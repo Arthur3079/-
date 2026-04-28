@@ -1,0 +1,35 @@
+[Unit]
+Description=Sonya payment bot (Telegram Stars)
+Documentation=https://github.com/pvrmj88vmj-ops/AI-tg
+After=network-online.target sonya.service
+Wants=network-online.target
+PartOf=sonya.service
+
+[Service]
+Type=simple
+User=sonya
+Group=sonya
+WorkingDirectory=/opt/sonya
+EnvironmentFile=/opt/sonya/.env
+ExecStart=/opt/sonya/.venv/bin/python -m sonya.payment_bot.main
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=20s
+
+# `python -m sonya.payment_bot.main` exits 2 if PAY_BOT_TOKEN is empty.
+# Treat that as success so we don't infinite-restart in DRY mode.
+SuccessExitStatus=2
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/sonya/data /opt/sonya/logs
+
+# Logs
+StandardOutput=append:/var/log/sonya/payment-bot.log
+StandardError=append:/var/log/sonya/payment-bot.log
+
+[Install]
+WantedBy=multi-user.target
