@@ -1,58 +1,58 @@
 version: "3.9"
 
-# Two long-running services share one SQLite volume:
-#   - sonya:       Telethon userbot (user account)
-#   - payment_bot: Bot API process for Stars invoices (skipped when token unset)
+# Combine production stack — postgres + FastAPI backend (with SPA mounted on
+# /app) + the Telethon worker. The existing Telegram userbot (sonya.main)
+# and payment bot are deployed separately and not part of this compose.
 #
-# Both processes hit /app/data/sonya.db; alembic migrations run inside `sonya`
-# at startup (see sonya/main.py) so don't run it elsewhere.
+# Both `backend` and `worker` read credentials (DB URL, JWT secret, Telegram
+# API creds, etc.) from a shared `.env` file. Run alembic migrations inside
+# the backend container before first use:
+#   docker compose exec backend alembic upgrade head
 
 services:
-  sonya:
+  db:
+    image: postgres:16-alpine
+    container_name: combine-db
+    environment:
+      POSTGRES_USER: sonya
+      POSTGRES_PASSWORD: sonya
+      POSTGRES_DB: sonya
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonya -d sonya"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    image: sonya:latest
-    container_name: sonya
-    restart: unless-stopped
+    image: combine-backend:latest
+    container_name: combine-backend
     env_file: .env
-    volumes:
-      - sonya-data:/app/data
-      - sonya-logs:/app/logs
-      - ./knowledge:/app/knowledge:ro
-      # Mount the Telethon session file outside the container so re-deploys
-      # don't require a fresh login.
-      - ./sessions:/app/sessions
-    environment:
-      - TELEGRAM_SESSION_NAME=/app/sessions/sonya
-    command: ["python", "-m", "sonya.main"]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import sonya.config; sonya.config.get_settings()"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-
-  payment_bot:
-    image: sonya:latest
-    container_name: sonya-payment-bot
-    restart: unless-stopped
     depends_on:
-      - sonya
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: combine-worker:latest
+    container_name: combine-worker
     env_file: .env
-    volumes:
-      - sonya-data:/app/data
-      - sonya-logs:/app/logs
-      - ./knowledge:/app/knowledge:ro
-    command: ["python", "-m", "sonya.payment_bot.main"]
-    # Container exits with code 2 when PAY_BOT_TOKEN is empty — `restart:
-    # unless-stopped` then keeps backing off. To run *without* a payment bot,
-    # add `--scale payment_bot=0` or comment this service out.
-    healthcheck:
-      test: ["CMD", "true"]
-      interval: 60s
-      timeout: 5s
-      retries: 1
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
-  sonya-data:
-  sonya-logs:
+  pgdata: {}

@@ -1,54 +1,36 @@
-FROM python:3.11-slim AS builder
+# syntax=docker/dockerfile:1.7
 
+# Stage 1: build the React SPA.
+FROM node:22-alpine AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: FastAPI runtime, serves the API and the built SPA on /app.
+FROM python:3.11-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
-
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc \
+        build-essential gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
+COPY pyproject.toml requirements.txt ./
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
 COPY sonya ./sonya
+COPY sonya_web ./sonya_web
 COPY migrations ./migrations
 COPY alembic.ini ./
 
-RUN pip install --upgrade pip \
-    && pip wheel --no-deps --wheel-dir=/wheels . \
-    && pip install --prefix=/install .
+# Copy the SPA bundle produced in stage 1 into the static mount point.
+COPY --from=frontend-build /app/frontend/dist ./sonya_web/static/spa
 
-
-FROM python:3.11-slim AS runtime
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PATH="/install/bin:$PATH" \
-    PYTHONPATH="/install/lib/python3.11/site-packages"
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates tini \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --create-home --uid 1000 sonya
-
-WORKDIR /app
-
-COPY --from=builder /install /install
-COPY --from=builder /app /app
-COPY knowledge ./knowledge
-
-RUN mkdir -p /app/logs /app/data \
-    && chown -R sonya:sonya /app
-
-USER sonya
-
-ENV LOG_DIR=/app/logs \
-    DATABASE_URL=sqlite+aiosqlite:////app/data/sonya.db
-
-ENTRYPOINT ["/usr/bin/tini", "--"]
-
-# Default command runs the userbot. The compose file overrides this for the
-# payment bot service.
-CMD ["python", "-m", "sonya.main"]
+EXPOSE 8000
+CMD ["uvicorn", "sonya_web.app:app", "--host", "0.0.0.0", "--port", "8000"]
