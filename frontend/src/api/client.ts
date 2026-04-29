@@ -35,24 +35,25 @@ export async function apiFetch<T>(
   const res = await fetch(url, init);
 
   if (!res.ok) {
+    // Read the body once as text, then try to parse it as JSON. The Fetch API
+    // only lets you consume the body once — calling res.json() and falling
+    // back to res.text() would always fail on the second read.
+    const text = await res.text().catch(() => "");
     let detail: unknown;
     let message = `${res.status} ${res.statusText}`;
-    try {
-      detail = await res.json();
-      if (
-        detail &&
-        typeof detail === "object" &&
-        "detail" in detail &&
-        typeof (detail as { detail: unknown }).detail === "string"
-      ) {
-        message = (detail as { detail: string }).detail;
-      }
-    } catch {
+    if (text) {
       try {
-        const text = await res.text();
-        if (text) message = text;
+        detail = JSON.parse(text);
+        if (
+          detail &&
+          typeof detail === "object" &&
+          "detail" in detail &&
+          typeof (detail as { detail: unknown }).detail === "string"
+        ) {
+          message = (detail as { detail: string }).detail;
+        }
       } catch {
-        // give up — fall back to status
+        message = text;
       }
     }
     throw new ApiError(res.status, message, detail);
