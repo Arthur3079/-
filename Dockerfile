@@ -20,14 +20,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml requirements.txt ./
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
-
+# Copy sources first so `pip install '.[web]'` can resolve the project
+# (setuptools needs the package layout present). requirements.txt acts
+# as a pin file for humans; pyproject.toml is the source of truth for
+# the runtime image (core deps + `web` extras for FastAPI / uvicorn).
+COPY pyproject.toml requirements.txt README.md ./
 COPY sonya ./sonya
 COPY sonya_web ./sonya_web
 COPY migrations ./migrations
 COPY alembic.ini ./
+
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir ".[web]"
 
 # Copy the SPA bundle produced in stage 1 into the static mount point.
 COPY --from=frontend-build /app/frontend/dist ./sonya_web/static/spa

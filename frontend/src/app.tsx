@@ -12,6 +12,9 @@ import { router, ROUTER_BASENAME } from "./router";
 function onUnauthorized(err: unknown) {
   if (!(err instanceof ApiError) || err.status !== 401) return;
   useAuthStore.getState().clear();
+  // Drop every cached query so the next user never sees stale data from
+  // the previous session (multi-tenant data separation).
+  queryClient.clear();
   if (typeof window === "undefined") return;
 
   // Router navigation respects the configured basename, so calling
@@ -22,7 +25,7 @@ function onUnauthorized(err: unknown) {
   }
 }
 
-const queryClient = new QueryClient({
+const queryClient: QueryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,

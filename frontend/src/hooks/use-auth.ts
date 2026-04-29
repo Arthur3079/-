@@ -1,4 +1,8 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   apiFetch,
   tokenOutSchema,
@@ -61,8 +65,12 @@ export function useRegister() {
 }
 
 export function useLogout() {
+  const queryClient = useQueryClient();
   return () => {
     useAuthStore.getState().clear();
+    // Drop every cached query so the next user never sees stale data from
+    // the previous session (multi-tenant data separation).
+    queryClient.clear();
   };
 }
 
