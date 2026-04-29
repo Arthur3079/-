@@ -133,7 +133,7 @@ function WarmingTable({ jobs }: { jobs: WarmingJobOut[] }) {
                       <Pause className="h-4 w-4" />
                     </Button>
                   )}
-                  {(job.status === "paused" || job.status === "pending") && (
+                  {job.status === "paused" && (
                     <Button
                       size="icon"
                       variant="ghost"
