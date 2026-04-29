@@ -33,6 +33,10 @@ dependencies = [
     "tenacity>=8.5",
     # Symmetric encryption for combine session_blob / proxy passwords
     "cryptography>=43.0",
+    # JWT-based session tokens for the multi-tenant auth layer
+    "pyjwt>=2.8",
+    # Password hashing for the users table
+    "bcrypt>=4.1",
 ]
 
 [project.optional-dependencies]

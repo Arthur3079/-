@@ -21,6 +21,7 @@ from sonya.combine.accounts.schemas import (
     ProxyUpdate,
 )
 from sonya.db.models_combine import Proxy, ProxyHealth
+from sonya_web.auth_deps import ensure_request_owner, get_current_owner_id
 from sonya_web.deps import get_session
 
 router = APIRouter(prefix="/combine/proxies", tags=["combine"])
@@ -44,19 +45,25 @@ def _to_out(proxy: Proxy) -> ProxyOut:
 
 
 @router.get("", response_model=list[ProxyOut])
-async def list_proxies(session: Annotated[AsyncSession, Depends(get_session)]) -> list[ProxyOut]:
-    rows = await repo.list_proxies(session)
+async def list_proxies(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+) -> list[ProxyOut]:
+    rows = await repo.list_proxies(session, owner_id=owner_id)
     return [_to_out(p) for p in rows]
 
 
 @router.post("", response_model=ProxyOut, status_code=201)
 async def create_proxy(
-    payload: ProxyIn, session: Annotated[AsyncSession, Depends(get_session)]
+    payload: ProxyIn,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+    _owner: Annotated[object, Depends(ensure_request_owner)],
 ) -> ProxyOut:
-    await repo.ensure_default_owner(session)
     try:
         proxy = await repo.create_proxy(
             session,
+            owner_id=owner_id,
             type=payload.type,
             host=payload.host,
             port=payload.port,
@@ -74,9 +81,11 @@ async def create_proxy(
 
 @router.get("/{proxy_id}", response_model=ProxyOut)
 async def get_proxy(
-    proxy_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    proxy_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ProxyOut:
-    proxy = await repo.get_proxy(session, proxy_id)
+    proxy = await repo.get_proxy(session, proxy_id, owner_id=owner_id)
     if proxy is None:
         raise HTTPException(status_code=404, detail="proxy not found")
     return _to_out(proxy)
@@ -87,8 +96,9 @@ async def update_proxy(
     proxy_id: int,
     payload: ProxyUpdate,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ProxyOut:
-    proxy = await repo.get_proxy(session, proxy_id)
+    proxy = await repo.get_proxy(session, proxy_id, owner_id=owner_id)
     if proxy is None:
         raise HTTPException(status_code=404, detail="proxy not found")
     proxy = await repo.update_proxy(
@@ -108,9 +118,11 @@ async def update_proxy(
 
 @router.delete("/{proxy_id}", status_code=204)
 async def delete_proxy(
-    proxy_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    proxy_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> None:
-    proxy = await repo.get_proxy(session, proxy_id)
+    proxy = await repo.get_proxy(session, proxy_id, owner_id=owner_id)
     if proxy is None:
         raise HTTPException(status_code=404, detail="proxy not found")
     await repo.delete_proxy(session, proxy)
@@ -119,7 +131,9 @@ async def delete_proxy(
 
 @router.post("/{proxy_id}/check", response_model=ProxyHealthOut)
 async def check_proxy(
-    proxy_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    proxy_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ProxyHealthOut:
     """Best-effort TCP connect probe — measures reachability + latency.
 
@@ -128,7 +142,7 @@ async def check_proxy(
     sees broken entries quickly.
     """
 
-    proxy = await repo.get_proxy(session, proxy_id)
+    proxy = await repo.get_proxy(session, proxy_id, owner_id=owner_id)
     if proxy is None:
         raise HTTPException(status_code=404, detail="proxy not found")
 

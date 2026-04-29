@@ -30,6 +30,7 @@ from sonya.db.models_combine import (
     WarmingJob,
     WarmingJobStatus,
 )
+from sonya_web.auth_deps import ensure_request_owner, get_current_owner_id
 from sonya_web.deps import get_session
 
 router = APIRouter(prefix="/combine/warming", tags=["combine"])
@@ -88,8 +89,9 @@ def _resolve_config(override: WarmingPlanConfigIn | None) -> PlanConfig:
 @router.get("/jobs", response_model=list[WarmingJobOut])
 async def list_jobs(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[WarmingJobOut]:
-    jobs = await repo.list_jobs(session)
+    jobs = await repo.list_jobs(session, owner_id=owner_id)
     return [_to_out(j) for j in jobs]
 
 
@@ -97,9 +99,10 @@ async def list_jobs(
 async def create_job(
     payload: WarmingJobCreateIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+    _owner: Annotated[object, Depends(ensure_request_owner)],
 ) -> WarmingJobDetailOut:
-    await account_repo.ensure_default_owner(session)
-    account = await account_repo.get_account(session, payload.account_id)
+    account = await account_repo.get_account(session, payload.account_id, owner_id=owner_id)
     if account is None:
         raise HTTPException(status_code=400, detail="account does not exist")
 
@@ -119,16 +122,18 @@ async def create_job(
     await session.flush()
     await session.commit()
 
-    fresh = await repo.get_job(session, job.id)
+    fresh = await repo.get_job(session, job.id, owner_id=owner_id)
     assert fresh is not None
     return _to_detail(fresh)
 
 
 @router.get("/jobs/{job_id}", response_model=WarmingJobDetailOut)
 async def get_job(
-    job_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    job_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> WarmingJobDetailOut:
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="warming job not found")
     return _to_detail(job)
@@ -136,9 +141,11 @@ async def get_job(
 
 @router.post("/jobs/{job_id}/pause", response_model=WarmingJobOut)
 async def pause_job(
-    job_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    job_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> WarmingJobOut:
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="warming job not found")
     if job.status in {WarmingJobStatus.COMPLETED, WarmingJobStatus.CANCELLED}:
@@ -150,14 +157,15 @@ async def pause_job(
 
 @router.post("/jobs/{job_id}/resume", response_model=WarmingJobOut)
 async def resume_job(
-    job_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    job_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> WarmingJobOut:
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="warming job not found")
     if job.status != WarmingJobStatus.PAUSED:
         raise HTTPException(status_code=409, detail=f"job is {job.status.value}, not paused")
-    # If any actions have been executed, we go to RUNNING; otherwise back to PENDING.
     has_executed = any(a.status != WarmingActionStatus.PENDING for a in job.actions)
     job.status = WarmingJobStatus.RUNNING if has_executed else WarmingJobStatus.PENDING
     await session.commit()
@@ -166,9 +174,11 @@ async def resume_job(
 
 @router.post("/jobs/{job_id}/cancel", response_model=WarmingJobOut)
 async def cancel_job(
-    job_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    job_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> WarmingJobOut:
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="warming job not found")
     if job.status in {WarmingJobStatus.COMPLETED, WarmingJobStatus.CANCELLED}:
@@ -181,8 +191,12 @@ async def cancel_job(
 
 
 @router.delete("/jobs/{job_id}", status_code=204)
-async def delete_job(job_id: int, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
-    job = await repo.get_job(session, job_id)
+async def delete_job(
+    job_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+) -> None:
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="warming job not found")
     await repo.delete_job(session, job)
@@ -198,8 +212,9 @@ async def complete_action(
     action_id: int,
     payload: WarmingActionCompleteIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> WarmingActionOut:
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="warming job not found")
     action: WarmingAction | None = next((a for a in job.actions if a.id == action_id), None)

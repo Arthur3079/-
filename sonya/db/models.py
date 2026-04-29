@@ -368,6 +368,10 @@ class AdminAction(Base):
 
 # Re-export combine models so Alembic autogenerate and `target_metadata`
 # pick them up without the user of this module caring where they live.
+from sonya.db.models_auth import (  # noqa: E402,F401
+    User,
+    UserRole,
+)
 from sonya.db.models_combine import (  # noqa: E402,F401
     Account,
     AccountRole,
