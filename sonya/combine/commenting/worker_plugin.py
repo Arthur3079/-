@@ -135,7 +135,17 @@ class CommentingWorkerPlugin:
             finally:
                 disconnect = getattr(client, "disconnect", None)
                 if disconnect is not None:
-                    await disconnect()
+                    try:
+                        await disconnect()
+                    except Exception:
+                        # Best-effort cleanup — do NOT let a failing
+                        # disconnect propagate, otherwise the success
+                        # path below never commits POSTED and the next
+                        # tick re-sends the comment (duplicate post).
+                        logger.warning(
+                            "commenting: disconnect failed for account %d (ignored)",
+                            account.id,
+                        )
 
             comment.status = CommentStatus.POSTED
             comment.posted_at = datetime.now(timezone.utc)

@@ -311,6 +311,37 @@ async def test_step_missing_account_marks_failed(
 
 
 @pytest.mark.asyncio
+async def test_step_disconnect_failure_does_not_block_commit(
+    db_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """If ``client.disconnect()`` raises after a successful post, the comment
+    must still be marked POSTED — otherwise the next tick would re-send it
+    and produce a duplicate Telegram comment.
+    """
+    _, post_id, comment_id = await _seed_campaign_post_comment(db_factory)
+
+    class _BrokenDisconnectClient(_FakeClient):
+        async def disconnect(self) -> None:  # type: ignore[override]
+            raise RuntimeError("transport already closed")
+
+    factory = _FakeFactory(clients={1: _BrokenDisconnectClient(account_id=1)})
+    poster = _FakePoster()
+    plugin = CommentingWorkerPlugin(poster=poster)
+
+    did = await plugin.step(_ctx(db_factory, factory=factory))
+    assert did is True
+    assert len(poster.calls) == 1
+
+    async with db_factory() as s:
+        comment = await s.get(Comment, comment_id)
+        post = await s.get(ObservedPost, post_id)
+        assert comment is not None and post is not None
+        assert comment.status == CommentStatus.POSTED
+        assert comment.tg_comment_id is not None
+        assert post.status == ObservedPostStatus.COMMENTED
+
+
+@pytest.mark.asyncio
 async def test_step_picks_oldest_comment_first(
     db_factory: async_sessionmaker[AsyncSession],
 ) -> None:
