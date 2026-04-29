@@ -1,4 +1,8 @@
-import { Navigate, createBrowserRouter } from "react-router-dom";
+import {
+  Navigate,
+  createBrowserRouter,
+  useLocation,
+} from "react-router-dom";
 import type { ReactNode } from "react";
 import { RootLayout } from "@/layouts/root-layout";
 import { DashboardPage } from "@/pages/dashboard";
@@ -14,7 +18,19 @@ import { useAuthStore } from "@/stores/auth";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuthStore((s) => s.token);
-  if (!token) return <Navigate to="/login" replace />;
+  const location = useLocation();
+  if (!token) {
+    // Capture the page the user was trying to reach so LoginPage can send
+    // them back there after a successful login (login.tsx reads
+    // location.state.from).
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname + location.search }}
+      />
+    );
+  }
   return <>{children}</>;
 }
 
