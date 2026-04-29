@@ -8,10 +8,10 @@ or::
 
     python scripts/run_worker.py
 
-The script wires up an empty :class:`PluginRegistry` for now — concrete
-plugins land in Sprints 7.2..7.5 (parser/commenting/reactions/warming).
-Once a plugin module exists, register it here and the runner will pick
-it up on the next process restart.
+The script builds a :class:`PluginRegistry` with every combine plugin
+registered in a fixed order. The runner polls them round-robin each
+tick, so registration order also dictates which plugin gets the first
+crack at work on every poll.
 """
 
 from __future__ import annotations
@@ -22,6 +22,10 @@ import signal
 from typing import NoReturn
 
 from sonya.combine.accounts.repository import DEFAULT_OWNER_ID
+from sonya.combine.commenting import CommentingWorkerPlugin
+from sonya.combine.parsers import ParserWorkerPlugin
+from sonya.combine.reactions import ReactionsWorkerPlugin
+from sonya.combine.warming import WarmingWorkerPlugin
 from sonya.combine.worker import (
     AccountRateLimiter,
     PluginRegistry,
@@ -45,10 +49,10 @@ def _build_runner() -> WorkerRunner:
 
     settings = get_settings()
     registry = PluginRegistry()
-    # Plugins are added by future sprints. The runner starts in a no-op
-    # configuration: it polls every plugin (none yet), reports zero work
-    # and sleeps. That's intentional — operators can roll the worker out
-    # ahead of the actual logic landing.
+    registry.register(ParserWorkerPlugin())
+    registry.register(CommentingWorkerPlugin())
+    registry.register(ReactionsWorkerPlugin())
+    registry.register(WarmingWorkerPlugin())
 
     ctx = WorkerContext(
         session_factory=async_session_factory(),
