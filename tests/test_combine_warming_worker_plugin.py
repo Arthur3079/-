@@ -268,6 +268,39 @@ async def test_step_failure_marks_failed(
 
 
 @pytest.mark.asyncio
+async def test_step_disconnect_failure_does_not_block_commit(
+    db_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """If ``client.disconnect()`` raises after a successful action, the action
+    must still be marked DONE and trust must still bump — otherwise the next
+    tick would re-run the action (e.g. duplicate channel join).
+    """
+    job_id, [aid] = await _seed_job(
+        db_factory,
+        actions=[(WarmingActionKind.SEND_IDLE_MESSAGE, None, 5)],
+        trust_score=10,
+    )
+
+    class _BrokenDisconnectClient(_FakeClient):
+        async def disconnect(self) -> None:  # type: ignore[override]
+            raise RuntimeError("transport already closed")
+
+    factory = _FakeFactory(clients={1: _BrokenDisconnectClient(account_id=1)})
+    plugin = WarmingWorkerPlugin(executor=_RecordingExecutor())
+
+    assert await plugin.step(_ctx(db_factory, factory=factory)) is True
+
+    async with db_factory() as s:
+        action = await s.get(WarmingAction, aid)
+        job = await s.get(WarmingJob, job_id)
+        account = await s.get(Account, 1)
+        assert action is not None and job is not None and account is not None
+        assert action.status == WarmingActionStatus.DONE
+        assert account.trust_score == 15
+        assert job.status == WarmingJobStatus.COMPLETED
+
+
+@pytest.mark.asyncio
 async def test_step_picks_earliest_scheduled_first(
     db_factory: async_sessionmaker[AsyncSession],
 ) -> None:

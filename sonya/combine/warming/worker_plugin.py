@@ -142,7 +142,18 @@ class WarmingWorkerPlugin:
             finally:
                 disconnect = getattr(client, "disconnect", None)
                 if disconnect is not None:
-                    await disconnect()
+                    try:
+                        await disconnect()
+                    except Exception:
+                        # Best-effort cleanup — a failing disconnect must
+                        # not propagate, otherwise the success-path
+                        # commit below is skipped and the next tick
+                        # re-runs the action (e.g. duplicate join /
+                        # double reaction).
+                        logger.warning(
+                            "warming: disconnect failed for account %d (ignored)",
+                            account.id,
+                        )
 
             await self._trust.complete_action(
                 session,
