@@ -14,9 +14,17 @@ from sonya.combine.commenting.renderer import (
     RenderedComment,
     StubCommentRenderer,
 )
+from sonya.combine.commenting.telethon_poster import (
+    PostedComment,
+    TelethonCommentPoster,
+)
+from sonya.combine.commenting.worker_plugin import CommentingWorkerPlugin
 
 __all__ = [
     "CommentRenderer",
+    "CommentingWorkerPlugin",
+    "PostedComment",
     "RenderedComment",
     "StubCommentRenderer",
+    "TelethonCommentPoster",
 ]
