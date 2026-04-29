@@ -20,5 +20,4 @@ logs/
 .env.local
 .env.production
 docs
-README.md
 tests

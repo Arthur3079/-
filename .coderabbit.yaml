@@ -1,0 +1,5 @@
+reviews:
+  # Temporary until the repo's default branch is switched to ai-tg-main.
+  # Without this override CodeRabbit skips auto-review on PRs that target
+  # a non-default branch.
+  target_branch: ai-tg-main

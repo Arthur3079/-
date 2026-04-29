@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
@@ -10,10 +10,12 @@ import {
   BarChart3,
   PanelLeftClose,
   PanelLeft,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/stores/sidebar-store";
 import { Button } from "@/components/ui/button";
+import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -29,6 +31,14 @@ const NAV_ITEMS = [
 export function Sidebar() {
   const collapsed = useSidebarStore((s) => s.collapsed);
   const toggle = useSidebarStore((s) => s.toggle);
+  const { data: user } = useCurrentUser();
+  const logout = useLogout();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   return (
     <aside
@@ -79,11 +89,31 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-sidebar-border p-4">
-        {!collapsed && (
-          <p className="text-xs text-muted-foreground">
-            Combine v0.1.0
+      <div className="space-y-2 border-t border-sidebar-border p-4">
+        {!collapsed && user && (
+          <p
+            className="truncate text-xs text-sidebar-foreground"
+            title={`${user.login} • ${user.role}`}
+          >
+            {user.login}{" "}
+            <span className="text-muted-foreground">({user.role})</span>
           </p>
+        )}
+        <Button
+          variant="ghost"
+          size={collapsed ? "icon" : "sm"}
+          onClick={handleLogout}
+          className={cn(
+            "text-sidebar-foreground hover:bg-sidebar-accent",
+            collapsed ? "mx-auto" : "w-full justify-start",
+          )}
+          title="Logout"
+        >
+          <LogOut className="h-4 w-4" />
+          {!collapsed && <span className="ml-2">Logout</span>}
+        </Button>
+        {!collapsed && (
+          <p className="text-xs text-muted-foreground">Combine v0.1.0</p>
         )}
       </div>
     </aside>

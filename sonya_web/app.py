@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -88,6 +89,28 @@ def create_app() -> FastAPI:
         return FileResponse(STATIC_DIR / "index.html")
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    spa_dir = STATIC_DIR / "spa"
+    spa_index = spa_dir / "index.html"
+    if spa_dir.exists() and spa_index.exists():
+        # Catch-all under /app: serve the built asset if it exists on disk,
+        # otherwise fall back to index.html so React Router can handle
+        # client-side routes like /app/warming or /app/commenting.
+        @app.get("/app", include_in_schema=False)
+        async def spa_root() -> FileResponse:
+            return FileResponse(spa_index)
+
+        @app.get("/app/{rest:path}", include_in_schema=False)
+        async def spa_fallback(rest: str) -> FileResponse:
+            candidate = (spa_dir / rest).resolve()
+            if spa_dir.resolve() in candidate.parents and candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(spa_index)
+    else:
+        logging.getLogger(__name__).warning(
+            "SPA not mounted: %s does not exist or lacks index.html",
+            spa_dir,
+        )
 
     return app
 

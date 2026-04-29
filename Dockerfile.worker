@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1.7
+
+FROM python:3.11-slim
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy sources first so `pip install .` can resolve the project layout.
+# Worker doesn't need the FastAPI/uvicorn extras — core deps only.
+COPY pyproject.toml requirements.txt README.md ./
+COPY sonya ./sonya
+COPY scripts ./scripts
+COPY migrations ./migrations
+COPY alembic.ini ./
+
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir "."
+
+CMD ["python", "-m", "scripts.run_worker"]

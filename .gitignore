@@ -89,3 +89,7 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 frontend/.env.local
+
+# SPA build output — committed placeholder dir, but not its built contents.
+sonya_web/static/spa/*
+!sonya_web/static/spa/.gitkeep
