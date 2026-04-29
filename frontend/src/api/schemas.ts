@@ -1,18 +1,137 @@
 import { z } from "zod";
 
 // ---------- Analytics ----------
+//
+// These mirror the OverallSummary / per-module summaries returned by
+// `/api/combine/analytics/*` (see sonya/combine/analytics/schemas.py).
 
-export const analyticsSummarySchema = z.object({
-  total_accounts: z.number(),
-  active_accounts: z.number(),
-  total_proxies: z.number(),
-  warming_active: z.number(),
-  parser_jobs: z.number(),
-  commenting_campaigns: z.number(),
-  reaction_campaigns: z.number(),
+export const statusCountSchema = z.object({
+  status: z.string(),
+  count: z.number(),
 });
+export type StatusCount = z.infer<typeof statusCountSchema>;
 
-export type AnalyticsSummary = z.infer<typeof analyticsSummarySchema>;
+export const kindCountSchema = z.object({
+  kind: z.string(),
+  count: z.number(),
+});
+export type KindCount = z.infer<typeof kindCountSchema>;
+
+export const kindStatusCountSchema = z.object({
+  kind: z.string(),
+  status: z.string(),
+  count: z.number(),
+});
+export type KindStatusCount = z.infer<typeof kindStatusCountSchema>;
+
+export const emojiStatusCountSchema = z.object({
+  emoji: z.string(),
+  status: z.string(),
+  count: z.number(),
+});
+export type EmojiStatusCount = z.infer<typeof emojiStatusCountSchema>;
+
+export const trustBucketSchema = z.object({
+  lower: z.number(),
+  upper: z.number(),
+  count: z.number(),
+});
+export type TrustBucket = z.infer<typeof trustBucketSchema>;
+
+export const accountTopRowSchema = z.object({
+  id: z.number(),
+  phone: z.string(),
+  status: z.string(),
+  trust_score: z.number(),
+});
+export type AccountTopRow = z.infer<typeof accountTopRowSchema>;
+
+export const commentingCampaignTopRowSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  status: z.string(),
+  posted_count: z.number(),
+});
+export type CommentingCampaignTopRow = z.infer<
+  typeof commentingCampaignTopRowSchema
+>;
+
+export const reactionCampaignTopRowSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  status: z.string(),
+  posted_count: z.number(),
+});
+export type ReactionCampaignTopRow = z.infer<
+  typeof reactionCampaignTopRowSchema
+>;
+
+export const accountsSummarySchema = z.object({
+  total: z.number(),
+  by_status: z.array(statusCountSchema),
+  avg_trust: z.number(),
+  min_trust: z.number(),
+  max_trust: z.number(),
+  trust_buckets: z.array(trustBucketSchema),
+  top: z.array(accountTopRowSchema),
+  proxies_total: z.number(),
+  proxies_by_health: z.array(statusCountSchema),
+});
+export type AccountsSummary = z.infer<typeof accountsSummarySchema>;
+
+export const warmingSummarySchema = z.object({
+  jobs_total: z.number(),
+  jobs_by_status: z.array(statusCountSchema),
+  actions_total: z.number(),
+  actions_by_kind_status: z.array(kindStatusCountSchema),
+});
+export type WarmingSummary = z.infer<typeof warmingSummarySchema>;
+
+export const parsersSummarySchema = z.object({
+  jobs_total: z.number(),
+  jobs_by_status: z.array(statusCountSchema),
+  jobs_by_kind: z.array(kindCountSchema),
+  results_total: z.number(),
+  results_by_kind: z.array(kindCountSchema),
+  results_by_job_kind: z.array(kindCountSchema),
+});
+export type ParsersSummary = z.infer<typeof parsersSummarySchema>;
+
+export const commentingSummarySchema = z.object({
+  campaigns_total: z.number(),
+  campaigns_by_status: z.array(statusCountSchema),
+  posts_total: z.number(),
+  posts_by_status: z.array(statusCountSchema),
+  comments_total: z.number(),
+  comments_by_status: z.array(statusCountSchema),
+  top: z.array(commentingCampaignTopRowSchema),
+});
+export type CommentingSummary = z.infer<typeof commentingSummarySchema>;
+
+export const reactionsSummarySchema = z.object({
+  campaigns_total: z.number(),
+  campaigns_by_status: z.array(statusCountSchema),
+  targets_total: z.number(),
+  targets_by_status: z.array(statusCountSchema),
+  reactions_total: z.number(),
+  reactions_by_status: z.array(statusCountSchema),
+  reactions_by_emoji_status: z.array(emojiStatusCountSchema),
+  top: z.array(reactionCampaignTopRowSchema),
+});
+export type ReactionsSummary = z.infer<typeof reactionsSummarySchema>;
+
+export const overallSummarySchema = z.object({
+  accounts: accountsSummarySchema,
+  warming: warmingSummarySchema,
+  parsers: parsersSummarySchema,
+  commenting: commentingSummarySchema,
+  reactions: reactionsSummarySchema,
+});
+export type OverallSummary = z.infer<typeof overallSummarySchema>;
+
+// Backwards-compat alias for the dashboard hook in PR #12.
+export const analyticsSummarySchema = overallSummarySchema;
+export type AnalyticsSummary = OverallSummary;
 
 // ---------- Proxies ----------
 
@@ -121,3 +240,148 @@ export const healthCheckOutSchema = z.object({
   username: z.string().nullable().optional(),
 });
 export type HealthCheckOut = z.infer<typeof healthCheckOutSchema>;
+
+// ---------- Warming ----------
+
+export const warmingJobStatusSchema = z.enum([
+  "pending",
+  "running",
+  "paused",
+  "completed",
+  "cancelled",
+]);
+export type WarmingJobStatus = z.infer<typeof warmingJobStatusSchema>;
+
+export const warmingActionKindSchema = z.enum([
+  "subscribe_channel",
+  "read_history",
+  "react_post",
+  "send_idle_message",
+]);
+export type WarmingActionKind = z.infer<typeof warmingActionKindSchema>;
+
+export const warmingActionStatusSchema = z.enum([
+  "pending",
+  "done",
+  "failed",
+  "skipped",
+]);
+export type WarmingActionStatus = z.infer<typeof warmingActionStatusSchema>;
+
+export const warmingJobOutSchema = z.object({
+  id: z.number(),
+  owner_id: z.number(),
+  account_id: z.number(),
+  status: warmingJobStatusSchema,
+  target_trust_score: z.number(),
+  started_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  last_action_at: z.string().nullable(),
+  note: z.string().nullable(),
+  total_actions: z.number(),
+  actions_done: z.number(),
+  actions_failed: z.number(),
+  actions_pending: z.number(),
+});
+export type WarmingJobOut = z.infer<typeof warmingJobOutSchema>;
+
+export const warmingJobListSchema = z.array(warmingJobOutSchema);
+
+// ---------- Parsers ----------
+
+export const parserKindSchema = z.enum([
+  "users_in_chat",
+  "channels_of_user",
+  "chat_history",
+  "users_by_message",
+]);
+export type ParserKind = z.infer<typeof parserKindSchema>;
+
+export const parserJobStatusSchema = z.enum([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+export type ParserJobStatus = z.infer<typeof parserJobStatusSchema>;
+
+export const parserJobOutSchema = z.object({
+  id: z.number(),
+  owner_id: z.number(),
+  account_id: z.number(),
+  kind: parserKindSchema,
+  target: z.string(),
+  status: parserJobStatusSchema,
+  started_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  error: z.string().nullable(),
+  result_count: z.number(),
+  note: z.string().nullable(),
+});
+export type ParserJobOut = z.infer<typeof parserJobOutSchema>;
+
+export const parserJobListSchema = z.array(parserJobOutSchema);
+
+// ---------- Commenting ----------
+
+export const commentingCampaignStatusSchema = z.enum([
+  "draft",
+  "running",
+  "paused",
+  "archived",
+]);
+export type CommentingCampaignStatus = z.infer<
+  typeof commentingCampaignStatusSchema
+>;
+
+export const commentingCampaignOutSchema = z.object({
+  id: z.number(),
+  owner_id: z.number(),
+  name: z.string(),
+  status: commentingCampaignStatusSchema,
+  target_channels: z.array(z.string()),
+  account_ids: z.array(z.number()),
+  prompt_template: z.string(),
+  min_delay_seconds: z.number(),
+  max_delay_seconds: z.number(),
+  max_comments_per_day: z.number(),
+  started_at: z.string().nullable(),
+  paused_at: z.string().nullable(),
+  archived_at: z.string().nullable(),
+  note: z.string().nullable(),
+});
+export type CommentingCampaignOut = z.infer<typeof commentingCampaignOutSchema>;
+
+export const commentingCampaignListSchema = z.array(commentingCampaignOutSchema);
+
+// ---------- Reactions ----------
+
+export const reactionCampaignStatusSchema = z.enum([
+  "draft",
+  "running",
+  "paused",
+  "archived",
+]);
+export type ReactionCampaignStatus = z.infer<
+  typeof reactionCampaignStatusSchema
+>;
+
+export const reactionCampaignOutSchema = z.object({
+  id: z.number(),
+  owner_id: z.number(),
+  name: z.string(),
+  status: reactionCampaignStatusSchema,
+  target_channels: z.array(z.string()),
+  account_ids: z.array(z.number()),
+  emojis: z.array(z.string()),
+  accounts_per_post: z.number(),
+  max_reactions_per_day: z.number(),
+  started_at: z.string().nullable(),
+  paused_at: z.string().nullable(),
+  archived_at: z.string().nullable(),
+  note: z.string().nullable(),
+});
+export type ReactionCampaignOut = z.infer<typeof reactionCampaignOutSchema>;
+
+export const reactionCampaignListSchema = z.array(reactionCampaignOutSchema);
