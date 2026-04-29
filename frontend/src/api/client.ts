@@ -1,3 +1,5 @@
+import { useAuthStore } from "@/stores/auth";
+
 const BASE_URL = import.meta.env.VITE_API_URL ?? "/api";
 
 export class ApiError extends Error {
@@ -21,11 +23,13 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
   const { body, headers, ...rest } = options;
+  const token = useAuthStore.getState().token;
   const init: RequestInit = {
     ...rest,
     headers: {
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
   };
@@ -55,6 +59,9 @@ export async function apiFetch<T>(
       } catch {
         message = text;
       }
+    }
+    if (res.status === 401) {
+      useAuthStore.getState().clear();
     }
     throw new ApiError(res.status, message, detail);
   }
