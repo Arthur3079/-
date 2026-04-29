@@ -84,6 +84,20 @@ class Settings(BaseSettings):
     # do **not** ship to production with this unset.
     combine_secret_key: str | None = None
 
+    # --- Auth (JWT-based admin login) ---
+    # HMAC secret for signing access tokens. 32+ random bytes recommended
+    # (e.g. ``python -c "import secrets; print(secrets.token_urlsafe(48))"``).
+    # Empty/None makes :mod:`sonya.auth.jwt` raise on encode/decode — which
+    # is what you want in production. Left empty in dev/tests so the auth
+    # layer is opt-in.
+    auth_jwt_secret: str | None = None
+    # Access-token TTL in seconds. Default 12h matches typical admin shifts;
+    # tighten for higher-risk deployments.
+    auth_jwt_ttl_seconds: int = 60 * 60 * 12
+    # When True, ``GET /api/auth/register`` is enabled. Flip to False once
+    # the admin team is provisioned and rely on a CLI/seed for new users.
+    auth_register_enabled: bool = True
+
     # --- Logging ---
     log_level: str = "INFO"
     log_dir: Path = PROJECT_ROOT / "logs"

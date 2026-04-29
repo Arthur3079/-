@@ -37,6 +37,7 @@ from sonya.db.models_combine import (
     ObservedPost,
     ObservedPostStatus,
 )
+from sonya_web.auth_deps import ensure_request_owner, get_current_owner_id
 from sonya_web.deps import get_session
 
 router = APIRouter(prefix="/combine/commenting", tags=["combine"])
@@ -56,14 +57,17 @@ def _validate_accounts(payload_account_ids: list[int] | None, known_ids: set[int
 @router.get("/campaigns", response_model=list[CampaignOut])
 async def list_campaigns(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[CommentingCampaign]:
-    return await repo.list_campaigns(session)
+    return await repo.list_campaigns(session, owner_id=owner_id)
 
 
 @router.post("/campaigns", response_model=CampaignOut, status_code=201)
 async def create_campaign(
     payload: CampaignCreateIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+    _owner: Annotated[object, Depends(ensure_request_owner)],
 ) -> CommentingCampaign:
     if payload.max_delay_seconds < payload.min_delay_seconds:
         raise HTTPException(
@@ -71,12 +75,11 @@ async def create_campaign(
             detail="max_delay_seconds must be >= min_delay_seconds",
         )
 
-    owner = await account_repo.ensure_default_owner(session)
-    accounts = await account_repo.list_accounts(session)
+    accounts = await account_repo.list_accounts(session, owner_id=owner_id)
     _validate_accounts(payload.account_ids, {a.id for a in accounts})
 
     campaign = CommentingCampaign(
-        owner_id=owner.id,
+        owner_id=owner_id,
         name=payload.name,
         prompt_template=payload.prompt_template,
         target_channels=list(payload.target_channels),
@@ -97,8 +100,9 @@ async def create_campaign(
 async def get_campaign(
     campaign_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> CommentingCampaign:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     return campaign
@@ -109,13 +113,14 @@ async def update_campaign(
     campaign_id: int,
     payload: CampaignUpdateIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> CommentingCampaign:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
 
     if payload.account_ids is not None:
-        accounts = await account_repo.list_accounts(session)
+        accounts = await account_repo.list_accounts(session, owner_id=owner_id)
         _validate_accounts(payload.account_ids, {a.id for a in accounts})
         campaign.account_ids = list(payload.account_ids)
 
@@ -148,8 +153,9 @@ async def update_campaign(
 async def delete_campaign(
     campaign_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> None:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     await repo.delete_campaign(session, campaign)
@@ -160,8 +166,9 @@ def _lifecycle(target: CommentingCampaignStatus):
     async def _handler(
         campaign_id: int,
         session: Annotated[AsyncSession, Depends(get_session)],
+        owner_id: Annotated[int, Depends(get_current_owner_id)],
     ) -> CommentingCampaign:
-        campaign = await repo.get_campaign(session, campaign_id)
+        campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
         if campaign is None:
             raise HTTPException(status_code=404, detail="campaign not found")
         if campaign.status == CommentingCampaignStatus.ARCHIVED:
@@ -202,8 +209,9 @@ router.post(
 async def list_posts(
     campaign_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[ObservedPost]:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     return await repo.list_posts(session, campaign_id)
@@ -218,8 +226,9 @@ async def push_post(
     campaign_id: int,
     payload: ObservedPostIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ObservedPost:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     if campaign.status == CommentingCampaignStatus.ARCHIVED:
@@ -263,8 +272,9 @@ async def render_stub_comment(
     post_id: int,
     payload: RenderStubIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> Comment:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     if campaign.account_ids and payload.account_id not in campaign.account_ids:
@@ -277,7 +287,7 @@ async def render_stub_comment(
     if post is None:
         raise HTTPException(status_code=404, detail="post not found in this campaign")
 
-    account = await account_repo.get_account(session, payload.account_id)
+    account = await account_repo.get_account(session, payload.account_id, owner_id=owner_id)
     if account is None:
         raise HTTPException(status_code=400, detail="account does not exist")
 
@@ -306,7 +316,11 @@ async def list_comments(
     campaign_id: int,
     post_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[Comment]:
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="campaign not found")
     post = await repo.get_post_for_campaign(session, campaign_id, post_id)
     if post is None:
         raise HTTPException(status_code=404, detail="post not found in this campaign")
@@ -323,7 +337,11 @@ async def record_comment_outcome(
     comment_id: int,
     payload: CommentRecordIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> Comment:
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="campaign not found")
     post = await repo.get_post_for_campaign(session, campaign_id, post_id)
     if post is None:
         raise HTTPException(status_code=404, detail="post not found in this campaign")

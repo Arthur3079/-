@@ -26,6 +26,7 @@ from sonya.db.models_combine import (
     ParserJob,
     ParserJobStatus,
 )
+from sonya_web.auth_deps import ensure_request_owner, get_current_owner_id
 from sonya_web.deps import get_session
 
 router = APIRouter(prefix="/combine/parsers", tags=["combine"])
@@ -34,17 +35,19 @@ router = APIRouter(prefix="/combine/parsers", tags=["combine"])
 @router.get("/jobs", response_model=list[ParserJobOut])
 async def list_jobs(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[ParserJob]:
-    return await repo.list_jobs(session)
+    return await repo.list_jobs(session, owner_id=owner_id)
 
 
 @router.post("/jobs", response_model=ParserJobOut, status_code=201)
 async def create_job(
     payload: ParserJobCreateIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+    _owner: Annotated[object, Depends(ensure_request_owner)],
 ) -> ParserJob:
-    await account_repo.ensure_default_owner(session)
-    account = await account_repo.get_account(session, payload.account_id)
+    account = await account_repo.get_account(session, payload.account_id, owner_id=owner_id)
     if account is None:
         raise HTTPException(status_code=400, detail="account does not exist")
 
@@ -64,16 +67,24 @@ async def create_job(
 
 
 @router.get("/jobs/{job_id}", response_model=ParserJobOut)
-async def get_job(job_id: int, session: Annotated[AsyncSession, Depends(get_session)]) -> ParserJob:
-    job = await repo.get_job(session, job_id)
+async def get_job(
+    job_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+) -> ParserJob:
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="parser job not found")
     return job
 
 
 @router.delete("/jobs/{job_id}", status_code=204)
-async def delete_job(job_id: int, session: Annotated[AsyncSession, Depends(get_session)]) -> None:
-    job = await repo.get_job(session, job_id)
+async def delete_job(
+    job_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+) -> None:
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="parser job not found")
     await repo.delete_job(session, job)
@@ -82,9 +93,11 @@ async def delete_job(job_id: int, session: Annotated[AsyncSession, Depends(get_s
 
 @router.post("/jobs/{job_id}/cancel", response_model=ParserJobOut)
 async def cancel_job(
-    job_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    job_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ParserJob:
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="parser job not found")
     if job.status in {ParserJobStatus.COMPLETED, ParserJobStatus.CANCELLED}:
@@ -99,8 +112,9 @@ async def complete_job(
     job_id: int,
     payload: ParserJobCompleteIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ParserJob:
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="parser job not found")
     if job.status in {ParserJobStatus.COMPLETED, ParserJobStatus.CANCELLED, ParserJobStatus.FAILED}:
@@ -114,10 +128,11 @@ async def complete_job(
 async def list_results(
     job_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
     offset: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
 ) -> ParserResultsPage:
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="parser job not found")
     rows, total = await repo.list_results(session, job_id, offset=offset, limit=limit)
@@ -134,9 +149,10 @@ async def push_results(
     job_id: int,
     payload: ParserResultsBatchIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ParserJob:
     """Append a batch of results — used by the executor / smoke runs."""
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="parser job not found")
     if job.status in {ParserJobStatus.COMPLETED, ParserJobStatus.CANCELLED, ParserJobStatus.FAILED}:
@@ -154,19 +170,20 @@ async def run_stub(
     job_id: int,
     payload: ParserRunStubIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ParserJob:
     """Run the deterministic stub executor and store its output.
 
     Provided for dev/QA — lets the operator end-to-end exercise the
     parser pipeline without a logged-in Telegram account.
     """
-    job = await repo.get_job(session, job_id)
+    job = await repo.get_job(session, job_id, owner_id=owner_id)
     if job is None:
         raise HTTPException(status_code=404, detail="parser job not found")
     if job.status in {ParserJobStatus.COMPLETED, ParserJobStatus.CANCELLED, ParserJobStatus.FAILED}:
         raise HTTPException(status_code=409, detail=f"job already {job.status.value}")
 
-    account = await account_repo.get_account(session, job.account_id)
+    account = await account_repo.get_account(session, job.account_id, owner_id=owner_id)
     if account is None:
         raise HTTPException(status_code=400, detail="account no longer exists")
 

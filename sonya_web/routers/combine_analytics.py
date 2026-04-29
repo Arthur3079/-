@@ -24,6 +24,7 @@ from sonya.combine.analytics.schemas import (
     ReactionsSummary,
     WarmingSummary,
 )
+from sonya_web.auth_deps import get_current_owner_id
 from sonya_web.deps import get_session
 
 router = APIRouter(prefix="/combine/analytics", tags=["combine"])
@@ -32,40 +33,46 @@ router = APIRouter(prefix="/combine/analytics", tags=["combine"])
 @router.get("/summary", response_model=OverallSummary)
 async def get_overall_summary(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> OverallSummary:
-    return await AnalyticsAggregator(session).overall_summary()
+    return await AnalyticsAggregator(session, owner_id=owner_id).overall_summary()
 
 
 @router.get("/accounts", response_model=AccountsSummary)
 async def get_accounts_summary(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> AccountsSummary:
-    return await AnalyticsAggregator(session).accounts_summary()
+    return await AnalyticsAggregator(session, owner_id=owner_id).accounts_summary()
 
 
 @router.get("/warming", response_model=WarmingSummary)
 async def get_warming_summary(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> WarmingSummary:
-    return await AnalyticsAggregator(session).warming_summary()
+    return await AnalyticsAggregator(session, owner_id=owner_id).warming_summary()
 
 
 @router.get("/parsers", response_model=ParsersSummary)
 async def get_parsers_summary(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ParsersSummary:
-    return await AnalyticsAggregator(session).parsers_summary()
+    return await AnalyticsAggregator(session, owner_id=owner_id).parsers_summary()
 
 
 @router.get("/commenting", response_model=CommentingSummary)
 async def get_commenting_summary(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> CommentingSummary:
-    return await AnalyticsAggregator(session).commenting_summary()
+    return await AnalyticsAggregator(session, owner_id=owner_id).commenting_summary()
 
 
 @router.get("/reactions", response_model=ReactionsSummary)
 async def get_reactions_summary(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ReactionsSummary:
-    return await AnalyticsAggregator(session).reactions_summary()
+    return await AnalyticsAggregator(session, owner_id=owner_id).reactions_summary()

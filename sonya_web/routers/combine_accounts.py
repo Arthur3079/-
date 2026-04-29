@@ -44,6 +44,7 @@ from sonya.combine.accounts.schemas import (
 )
 from sonya.config import get_settings
 from sonya.db.models_combine import Account, AccountStatus
+from sonya_web.auth_deps import ensure_request_owner, get_current_owner_id
 from sonya_web.deps import get_session
 
 router = APIRouter(prefix="/combine/accounts", tags=["combine"])
@@ -95,21 +96,28 @@ def _to_out(acc: Account) -> AccountOut:
 @router.get("", response_model=list[AccountOut])
 async def list_accounts(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[AccountOut]:
-    rows = await repo.list_accounts(session)
+    rows = await repo.list_accounts(session, owner_id=owner_id)
     return [_to_out(a) for a in rows]
 
 
 @router.post("", response_model=AccountOut, status_code=201)
 async def create_account(
-    payload: AccountIn, session: Annotated[AsyncSession, Depends(get_session)]
+    payload: AccountIn,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+    _owner: Annotated[object, Depends(ensure_request_owner)],
 ) -> AccountOut:
-    await repo.ensure_default_owner(session)
-    if payload.proxy_id is not None and await repo.get_proxy(session, payload.proxy_id) is None:
+    if (
+        payload.proxy_id is not None
+        and await repo.get_proxy(session, payload.proxy_id, owner_id=owner_id) is None
+    ):
         raise HTTPException(status_code=400, detail="proxy_id does not exist")
     try:
         acc = await repo.create_account(
             session,
+            owner_id=owner_id,
             phone=payload.phone,
             role=payload.role,
             proxy_id=payload.proxy_id,
@@ -126,9 +134,11 @@ async def create_account(
 
 @router.get("/{account_id}", response_model=AccountOut)
 async def get_account(
-    account_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    account_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> AccountOut:
-    acc = await repo.get_account(session, account_id)
+    acc = await repo.get_account(session, account_id, owner_id=owner_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="account not found")
     return _to_out(acc)
@@ -139,14 +149,15 @@ async def update_account(
     account_id: int,
     payload: AccountUpdate,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> AccountOut:
-    acc = await repo.get_account(session, account_id)
+    acc = await repo.get_account(session, account_id, owner_id=owner_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="account not found")
     if (
         payload.proxy_id is not None
         and payload.proxy_id != 0
-        and await repo.get_proxy(session, payload.proxy_id) is None
+        and await repo.get_proxy(session, payload.proxy_id, owner_id=owner_id) is None
     ):
         raise HTTPException(status_code=400, detail="proxy_id does not exist")
     acc = await repo.update_account(
@@ -166,9 +177,11 @@ async def update_account(
 
 @router.delete("/{account_id}", status_code=204)
 async def delete_account(
-    account_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    account_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> None:
-    acc = await repo.get_account(session, account_id)
+    acc = await repo.get_account(session, account_id, owner_id=owner_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="account not found")
     await repo.delete_account(session, acc)
@@ -184,8 +197,9 @@ async def login_start(
     payload: LoginStartIn,
     session: Annotated[AsyncSession, Depends(get_session)],
     manager: Annotated[LoginManager, Depends(get_login_manager)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> LoginStartOut:
-    acc = await repo.get_account(session, account_id)
+    acc = await repo.get_account(session, account_id, owner_id=owner_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="account not found")
     try:
@@ -210,8 +224,9 @@ async def login_code(
     payload: LoginCodeIn,
     session: Annotated[AsyncSession, Depends(get_session)],
     manager: Annotated[LoginManager, Depends(get_login_manager)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> LoginCodeOut:
-    acc = await repo.get_account(session, account_id)
+    acc = await repo.get_account(session, account_id, owner_id=owner_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="account not found")
     try:
@@ -242,8 +257,9 @@ async def login_password(
     payload: LoginPasswordIn,
     session: Annotated[AsyncSession, Depends(get_session)],
     manager: Annotated[LoginManager, Depends(get_login_manager)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> LoginPasswordOut:
-    acc = await repo.get_account(session, account_id)
+    acc = await repo.get_account(session, account_id, owner_id=owner_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="account not found")
     try:
@@ -283,8 +299,9 @@ async def import_session(
     account_id: int,
     payload: SessionImportIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> AccountOut:
-    acc = await repo.get_account(session, account_id)
+    acc = await repo.get_account(session, account_id, owner_id=owner_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="account not found")
     acc = await repo.set_account_session(session, acc, session_string=payload.session)
@@ -294,9 +311,11 @@ async def import_session(
 
 @router.post("/{account_id}/logout", response_model=AccountOut)
 async def logout_account(
-    account_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    account_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> AccountOut:
-    acc = await repo.get_account(session, account_id)
+    acc = await repo.get_account(session, account_id, owner_id=owner_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="account not found")
     acc = await repo.clear_account_session(session, acc)
@@ -309,9 +328,11 @@ async def logout_account(
 
 @router.post("/{account_id}/health", response_model=HealthCheckOut)
 async def health_check(
-    account_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    account_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> HealthCheckOut:
-    acc = await repo.get_account(session, account_id)
+    acc = await repo.get_account(session, account_id, owner_id=owner_id)
     if acc is None:
         raise HTTPException(status_code=404, detail="account not found")
 

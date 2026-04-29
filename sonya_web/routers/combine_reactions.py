@@ -33,6 +33,7 @@ from sonya.db.models_combine import (
     ReactionTarget,
     ReactionTargetStatus,
 )
+from sonya_web.auth_deps import ensure_request_owner, get_current_owner_id
 from sonya_web.deps import get_session
 
 router = APIRouter(prefix="/combine/reactions", tags=["combine"])
@@ -52,21 +53,23 @@ def _validate_accounts(payload_account_ids: list[int] | None, known_ids: set[int
 @router.get("/campaigns", response_model=list[ReactionCampaignOut])
 async def list_campaigns(
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[ReactionCampaign]:
-    return await repo.list_campaigns(session)
+    return await repo.list_campaigns(session, owner_id=owner_id)
 
 
 @router.post("/campaigns", response_model=ReactionCampaignOut, status_code=201)
 async def create_campaign(
     payload: ReactionCampaignCreateIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
+    _owner: Annotated[object, Depends(ensure_request_owner)],
 ) -> ReactionCampaign:
-    owner = await account_repo.ensure_default_owner(session)
-    accounts = await account_repo.list_accounts(session)
+    accounts = await account_repo.list_accounts(session, owner_id=owner_id)
     _validate_accounts(payload.account_ids, {a.id for a in accounts})
 
     campaign = ReactionCampaign(
-        owner_id=owner.id,
+        owner_id=owner_id,
         name=payload.name,
         target_channels=list(payload.target_channels),
         account_ids=list(payload.account_ids),
@@ -84,9 +87,11 @@ async def create_campaign(
 
 @router.get("/campaigns/{campaign_id}", response_model=ReactionCampaignOut)
 async def get_campaign(
-    campaign_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    campaign_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ReactionCampaign:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     return campaign
@@ -97,13 +102,14 @@ async def update_campaign(
     campaign_id: int,
     payload: ReactionCampaignUpdateIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ReactionCampaign:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
 
     if payload.account_ids is not None:
-        accounts = await account_repo.list_accounts(session)
+        accounts = await account_repo.list_accounts(session, owner_id=owner_id)
         _validate_accounts(payload.account_ids, {a.id for a in accounts})
         campaign.account_ids = list(payload.account_ids)
 
@@ -126,9 +132,11 @@ async def update_campaign(
 
 @router.delete("/campaigns/{campaign_id}", status_code=204)
 async def delete_campaign(
-    campaign_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    campaign_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> None:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     await repo.delete_campaign(session, campaign)
@@ -139,8 +147,9 @@ def _lifecycle(target: ReactionCampaignStatus):
     async def _handler(
         campaign_id: int,
         session: Annotated[AsyncSession, Depends(get_session)],
+        owner_id: Annotated[int, Depends(get_current_owner_id)],
     ) -> ReactionCampaign:
-        campaign = await repo.get_campaign(session, campaign_id)
+        campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
         if campaign is None:
             raise HTTPException(status_code=404, detail="campaign not found")
         if campaign.status == ReactionCampaignStatus.ARCHIVED:
@@ -185,9 +194,11 @@ router.post(
     response_model=list[ReactionTargetOut],
 )
 async def list_targets(
-    campaign_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+    campaign_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[ReactionTarget]:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     return await repo.list_targets(session, campaign_id)
@@ -202,8 +213,9 @@ async def push_target(
     campaign_id: int,
     payload: ReactionTargetIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> ReactionTarget:
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     if campaign.status == ReactionCampaignStatus.ARCHIVED:
@@ -241,6 +253,7 @@ async def plan_target(
     campaign_id: int,
     target_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[Reaction]:
     """Run :class:`ReactionPlanner` and persist its output.
 
@@ -249,7 +262,7 @@ async def plan_target(
     campaign pool, assigns each one an emoji, and inserts pending rows.
     """
 
-    campaign = await repo.get_campaign(session, campaign_id)
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign not found")
     target = await repo.get_target_for_campaign(session, campaign_id, target_id)
@@ -291,7 +304,11 @@ async def list_reactions(
     campaign_id: int,
     target_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> list[Reaction]:
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="campaign not found")
     target = await repo.get_target_for_campaign(session, campaign_id, target_id)
     if target is None:
         raise HTTPException(status_code=404, detail="target not found in this campaign")
@@ -308,7 +325,11 @@ async def record_reaction_outcome(
     reaction_id: int,
     payload: ReactionRecordIn,
     session: Annotated[AsyncSession, Depends(get_session)],
+    owner_id: Annotated[int, Depends(get_current_owner_id)],
 ) -> Reaction:
+    campaign = await repo.get_campaign(session, campaign_id, owner_id=owner_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="campaign not found")
     target = await repo.get_target_for_campaign(session, campaign_id, target_id)
     if target is None:
         raise HTTPException(status_code=404, detail="target not found in this campaign")
