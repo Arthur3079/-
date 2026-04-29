@@ -10,5 +10,12 @@ from sonya.combine.reactions.planner import (
     PlannedReaction,
     ReactionPlanner,
 )
+from sonya.combine.reactions.telethon_poster import TelethonReactionPoster
+from sonya.combine.reactions.worker_plugin import ReactionsWorkerPlugin
 
-__all__ = ["PlannedReaction", "ReactionPlanner"]
+__all__ = [
+    "PlannedReaction",
+    "ReactionPlanner",
+    "ReactionsWorkerPlugin",
+    "TelethonReactionPoster",
+]

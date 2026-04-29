@@ -18,9 +18,13 @@ from sonya.combine.parsers.executor import (
     ParserExecutor,
     StubParserExecutor,
 )
+from sonya.combine.parsers.telethon_executor import TelethonExecutor
+from sonya.combine.parsers.worker_plugin import ParserWorkerPlugin
 
 __all__ = [
     "ExecutorResult",
     "ParserExecutor",
+    "ParserWorkerPlugin",
     "StubParserExecutor",
+    "TelethonExecutor",
 ]
