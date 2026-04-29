@@ -18,23 +18,33 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export const router = createBrowserRouter([
-  { path: "/login", element: <LoginPage /> },
-  {
-    element: (
-      <RequireAuth>
-        <RootLayout />
-      </RequireAuth>
-    ),
-    children: [
-      { index: true, element: <DashboardPage /> },
-      { path: "accounts", element: <AccountsPage /> },
-      { path: "proxies", element: <ProxiesPage /> },
-      { path: "warming", element: <WarmingPage /> },
-      { path: "parsers", element: <ParsersPage /> },
-      { path: "commenting", element: <CommentingPage /> },
-      { path: "reactions", element: <ReactionsPage /> },
-      { path: "analytics", element: <AnalyticsPage /> },
-    ],
-  },
-]);
+// Keep in sync with `base` in vite.config.ts and the FastAPI mount in
+// sonya_web/app.py. Trailing slash is trimmed because React Router's
+// basename expects no trailing slash.
+export const ROUTER_BASENAME = (
+  import.meta.env.BASE_URL ?? "/"
+).replace(/\/$/, "");
+
+export const router = createBrowserRouter(
+  [
+    { path: "/login", element: <LoginPage /> },
+    {
+      element: (
+        <RequireAuth>
+          <RootLayout />
+        </RequireAuth>
+      ),
+      children: [
+        { index: true, element: <DashboardPage /> },
+        { path: "accounts", element: <AccountsPage /> },
+        { path: "proxies", element: <ProxiesPage /> },
+        { path: "warming", element: <WarmingPage /> },
+        { path: "parsers", element: <ParsersPage /> },
+        { path: "commenting", element: <CommentingPage /> },
+        { path: "reactions", element: <ReactionsPage /> },
+        { path: "analytics", element: <AnalyticsPage /> },
+      ],
+    },
+  ],
+  { basename: ROUTER_BASENAME || undefined },
+);

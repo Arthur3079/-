@@ -7,17 +7,18 @@ import {
 import { RouterProvider } from "react-router-dom";
 import { ApiError } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
-import { router } from "./router";
+import { router, ROUTER_BASENAME } from "./router";
 
 function onUnauthorized(err: unknown) {
-  if (err instanceof ApiError && err.status === 401) {
-    useAuthStore.getState().clear();
-    if (
-      typeof window !== "undefined" &&
-      window.location.pathname !== "/login"
-    ) {
-      window.location.assign("/login");
-    }
+  if (!(err instanceof ApiError) || err.status !== 401) return;
+  useAuthStore.getState().clear();
+  if (typeof window === "undefined") return;
+
+  // Router navigation respects the configured basename, so calling
+  // router.navigate("/login") resolves to `${ROUTER_BASENAME}/login`.
+  const loginPath = `${ROUTER_BASENAME}/login`.replace(/\/+/g, "/");
+  if (window.location.pathname !== loginPath) {
+    router.navigate("/login", { replace: true });
   }
 }
 
