@@ -15,11 +15,15 @@ from sonya.combine.warming.planner import (
     PlanConfig,
     WarmingPlanner,
 )
+from sonya.combine.warming.telethon_executor import TelethonWarmingExecutor
 from sonya.combine.warming.trust import TrustScoreUpdater
+from sonya.combine.warming.worker_plugin import WarmingWorkerPlugin
 
 __all__ = [
     "DEFAULT_PLAN_CONFIG",
     "PlanConfig",
+    "TelethonWarmingExecutor",
     "TrustScoreUpdater",
     "WarmingPlanner",
+    "WarmingWorkerPlugin",
 ]
